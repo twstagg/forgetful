@@ -127,6 +127,9 @@ class MemoryToolAdapters:
         confidence: float | None = None,
         encoding_agent: str | None = None,
         encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> MemoryCreateResponse:
         """Adapter for create_memory tool"""
         logger.info("MCP Tool Called -> create memory", extra={"title": title})
@@ -149,6 +152,9 @@ class MemoryToolAdapters:
             confidence=confidence,
             encoding_agent=encoding_agent,
             encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         memory, similar_memories = await self.memory_service.create_memory(
@@ -246,6 +252,9 @@ class MemoryToolAdapters:
         confidence: float | None = None,
         encoding_agent: str | None = None,
         encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> Memory:
         """Adapter for update_memory tool"""
         logger.info("MCP Tool -> update_memory", extra={"memory_id": memory_id})
@@ -271,6 +280,9 @@ class MemoryToolAdapters:
             confidence=confidence,
             encoding_agent=encoding_agent,
             encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         updated_memory = MemoryUpdate(**updated_dict)
@@ -447,6 +459,16 @@ class ProjectToolAdapters:
         status: ProjectStatus = ProjectStatus.ACTIVE,
         repo_name: str | None = None,
         notes: str | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> Project:
         """Adapter for create_project tool"""
         user = await get_user_from_auth(ctx)
@@ -458,6 +480,15 @@ class ProjectToolAdapters:
             status=status,
             repo_name=repo_name,
             notes=notes,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         project = await self.project_service.create_project(
@@ -476,6 +507,16 @@ class ProjectToolAdapters:
         status: ProjectStatus | None = None,
         repo_name: str | None = None,
         notes: str | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> Project:
         """Adapter for update_project tool"""
         user = await get_user_from_auth(ctx)
@@ -487,6 +528,15 @@ class ProjectToolAdapters:
             status=status,
             repo_name=repo_name,
             notes=notes,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         project_data = ProjectUpdate(**updated_dict)
@@ -585,6 +635,16 @@ class CodeArtifactToolAdapters:
         ctx: Context,
         tags: list[str] | None = None,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> CodeArtifact:
         """Adapter for create_code_artifact tool"""
         user = await get_user_from_auth(ctx)
@@ -594,8 +654,17 @@ class CodeArtifactToolAdapters:
             description=description,
             code=code,
             language=language,
-            tags=tags,
+            tags=tags or [],
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         artifact = await self.code_artifact_service.create_code_artifact(
@@ -643,6 +712,16 @@ class CodeArtifactToolAdapters:
         language: str | None = None,
         tags: list[str] | None = None,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> CodeArtifact:
         """Adapter for update_code_artifact tool"""
         user = await get_user_from_auth(ctx)
@@ -654,6 +733,15 @@ class CodeArtifactToolAdapters:
             language=language,
             tags=tags,
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         artifact_data = CodeArtifactUpdate(**updated_dict)
@@ -713,6 +801,16 @@ class DocumentToolAdapters:
         filename: str | None = None,
         tags: list[str] | None = None,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> Document:
         """Adapter for create_document tool"""
         user = await get_user_from_auth(ctx)
@@ -725,6 +823,15 @@ class DocumentToolAdapters:
             filename=filename,
             tags=tags or [],
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         document = await self.document_service.create_document(
@@ -773,6 +880,16 @@ class DocumentToolAdapters:
         filename: str | None = None,
         tags: list[str] | None = None,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> Document:
         """Adapter for update_document tool"""
         user = await get_user_from_auth(ctx)
@@ -785,6 +902,15 @@ class DocumentToolAdapters:
             filename=filename,
             tags=tags,
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         document_data = DocumentUpdate(**updated_dict)
@@ -844,6 +970,16 @@ class EntityToolAdapters:
         tags: list[str] | None = None,
         aka: list[str] | None = None,
         project_ids: list[int] | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> Entity:
         """Adapter for create_entity tool"""
         user = await get_user_from_auth(ctx)
@@ -857,6 +993,15 @@ class EntityToolAdapters:
             tags=tags,
             aka=aka,
             project_ids=project_ids,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
         entity_data = EntityCreate(**entity_dict)
 
@@ -940,6 +1085,16 @@ class EntityToolAdapters:
         tags: list[str] | None = None,
         aka: list[str] | None = None,
         project_ids: list[int] | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> Entity:
         """Adapter for update_entity tool"""
         user = await get_user_from_auth(ctx)
@@ -952,6 +1107,15 @@ class EntityToolAdapters:
             tags=tags,
             aka=aka,
             project_ids=project_ids,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         entity_data = EntityUpdate(**updated_dict)
@@ -1031,6 +1195,15 @@ class EntityToolAdapters:
         strength: float | None = None,
         confidence: float | None = None,
         metadata: dict[str, Any] | None = None,
+        # Provenance (no confidence - already has its own parameter)
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> EntityRelationship:
         """Adapter for create_entity_relationship tool"""
         user = await get_user_from_auth(ctx)
@@ -1042,6 +1215,14 @@ class EntityToolAdapters:
             strength=strength,
             confidence=confidence,
             metadata=metadata,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         relationship = await self.entity_service.create_entity_relationship(
@@ -1077,6 +1258,15 @@ class EntityToolAdapters:
         strength: float | None = None,
         confidence: float | None = None,
         metadata: dict[str, Any] | None = None,
+        # Provenance (no confidence - already has its own parameter)
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ) -> EntityRelationship:
         """Adapter for update_entity_relationship tool"""
         user = await get_user_from_auth(ctx)
@@ -1086,6 +1276,14 @@ class EntityToolAdapters:
             strength=strength,
             confidence=confidence,
             metadata=metadata,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         relationship_data = EntityRelationshipUpdate(**updated_dict)
@@ -1165,6 +1363,16 @@ class PlanToolAdapters:
         goal: str | None = None,
         context: str | None = None,
         status: str = "draft",
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         from app.models.plan_models import PlanCreate, PlanStatus
         user = await get_user_from_auth(ctx)
@@ -1174,6 +1382,15 @@ class PlanToolAdapters:
             goal=goal,
             context=context,
             status=PlanStatus(status),
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
         return await self.plan_service.create_plan(user_id=user.id, plan_data=plan_data)
 
@@ -1185,12 +1402,31 @@ class PlanToolAdapters:
         goal: str | None = None,
         context: str | None = None,
         status: str | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         from app.models.plan_models import PlanStatus, PlanUpdate
         user = await get_user_from_auth(ctx)
         updated_dict = filter_none_values(
             title=title, goal=goal, context=context,
             status=PlanStatus(status) if status else None,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
         plan_data = PlanUpdate(**updated_dict)
         plan = await self.plan_service.update_plan(
@@ -1250,6 +1486,16 @@ class TaskToolAdapters:
         assigned_agent: str | None = None,
         criteria: list[dict[str, Any]] | None = None,
         dependency_ids: list[int] | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         from app.models.plan_models import CriterionCreate, TaskCreate, TaskPriority
         user = await get_user_from_auth(ctx)
@@ -1264,6 +1510,15 @@ class TaskToolAdapters:
             assigned_agent=assigned_agent,
             criteria=criteria_models,
             dependency_ids=dependency_ids,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
         return await self.task_service.create_task(user_id=user.id, task_data=task_data)
 
@@ -1274,12 +1529,31 @@ class TaskToolAdapters:
         title: str | None = None,
         description: str | None = None,
         priority: str | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         from app.models.plan_models import TaskPriority, TaskUpdate
         user = await get_user_from_auth(ctx)
         updated_dict = filter_none_values(
             title=title, description=description,
             priority=TaskPriority(priority) if priority else None,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
         task_data = TaskUpdate(**updated_dict)
         return await self.task_service.update_task(
@@ -1434,6 +1708,16 @@ class FileToolAdapters:
         ctx: Context,
         tags: list[str] | None = None,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         """Adapter for create_file tool"""
         from app.models.file_models import FileCreate
@@ -1445,8 +1729,17 @@ class FileToolAdapters:
             description=description,
             data=data,
             mime_type=mime_type,
-            tags=tags,
+            tags=tags or [],
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         file = await self.file_service.create_file(
@@ -1494,6 +1787,16 @@ class FileToolAdapters:
         mime_type: str | None = None,
         tags: list[str] | None = None,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         """Adapter for update_file tool"""
         from app.models.file_models import FileUpdate
@@ -1507,6 +1810,15 @@ class FileToolAdapters:
             mime_type=mime_type,
             tags=tags,
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         file_data = FileUpdate(**updated_dict)
@@ -1567,6 +1879,16 @@ class SkillToolAdapters:
         tags: list[str] | None = None,
         importance: int = 7,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         """Adapter for create_skill tool"""
         from app.models.skill_models import SkillCreate
@@ -1584,6 +1906,15 @@ class SkillToolAdapters:
             tags=tags or [],
             importance=importance,
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         skill = await self.skill_service.create_skill(
@@ -1635,6 +1966,16 @@ class SkillToolAdapters:
         tags: list[str] | None = None,
         importance: int | None = None,
         project_id: int | None = None,
+        # Provenance
+        source_repo: str | None = None,
+        source_files: list[str] | None = None,
+        source_url: str | None = None,
+        confidence: float | None = None,
+        encoding_agent: str | None = None,
+        encoding_version: str | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        agent_model: str | None = None,
     ):
         """Adapter for update_skill tool"""
         from app.models.skill_models import SkillUpdate
@@ -1652,6 +1993,15 @@ class SkillToolAdapters:
             tags=tags,
             importance=importance,
             project_id=project_id,
+            source_repo=source_repo,
+            source_files=source_files,
+            source_url=source_url,
+            confidence=confidence,
+            encoding_agent=encoding_agent,
+            encoding_version=encoding_version,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            agent_model=agent_model,
         )
 
         skill_data = SkillUpdate(**updated_dict)

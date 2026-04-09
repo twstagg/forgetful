@@ -77,6 +77,24 @@ class EntityCreate(BaseModel):
         description="Optional project IDs for immediate association with projects",
     )
 
+    # Provenance tracking fields (optional)
+    source_repo: str | None = Field(default=None, max_length=200, description="Repository/project source (e.g., 'owner/repo')")
+    source_files: list[str] | None = Field(default=None, description="Files that informed this (JSON list of paths)")
+    source_url: str | None = Field(default=None, max_length=2048, description="URL to original source material")
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="Encoding confidence score (0.0-1.0)")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="Software running the agent")
+    encoding_version: str | None = Field(default=None, max_length=50, description="Version of encoding software")
+    agent_id: str | None = Field(default=None, max_length=100, description="Agent identity")
+    agent_version: str | None = Field(default=None, max_length=50, description="Agent version")
+    agent_model: str | None = Field(default=None, max_length=100, description="LLM model used")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
+
     @field_validator("name", "custom_type", "notes")
     @classmethod
     def strip_whitespace(cls, v, info):
@@ -180,6 +198,24 @@ class EntityUpdate(BaseModel):
         default=None,
         description="New project associations (replaces existing). Unchanged if null. Empty list [] clears associations.",
     )
+
+    # Provenance tracking fields (optional)
+    source_repo: str | None = Field(default=None, max_length=200, description="New repository source. Unchanged if null.")
+    source_files: list[str] | None = Field(default=None, description="New source files. Unchanged if null.")
+    source_url: str | None = Field(default=None, max_length=2048, description="New source URL. Unchanged if null.")
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="New confidence score. Unchanged if null.")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="New encoding agent. Unchanged if null.")
+    encoding_version: str | None = Field(default=None, max_length=50, description="New encoding version. Unchanged if null.")
+    agent_id: str | None = Field(default=None, max_length=100, description="New agent identity. Unchanged if null.")
+    agent_version: str | None = Field(default=None, max_length=50, description="New agent version. Unchanged if null.")
+    agent_model: str | None = Field(default=None, max_length=100, description="New LLM model. Unchanged if null.")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
 
     @field_validator("name", "custom_type", "notes")
     @classmethod
@@ -393,6 +429,23 @@ class EntityRelationshipCreate(BaseModel):
         description="Flexible metadata dictionary for additional context (e.g., {'source': 'linkedin', 'last_verified': '2025-03-21'})",
     )
 
+    # Provenance tracking fields (optional) — confidence skipped (entity relationships have their own)
+    source_repo: str | None = Field(default=None, max_length=200, description="Repository/project source (e.g., 'owner/repo')")
+    source_files: list[str] | None = Field(default=None, description="Files that informed this (JSON list of paths)")
+    source_url: str | None = Field(default=None, max_length=2048, description="URL to original source material")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="Software running the agent")
+    encoding_version: str | None = Field(default=None, max_length=50, description="Version of encoding software")
+    agent_id: str | None = Field(default=None, max_length=100, description="Agent identity")
+    agent_version: str | None = Field(default=None, max_length=50, description="Agent version")
+    agent_model: str | None = Field(default=None, max_length=100, description="LLM model used")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
+
     @field_validator("relationship_type")
     @classmethod
     def strip_whitespace(cls, v):
@@ -447,6 +500,23 @@ class EntityRelationshipUpdate(BaseModel):
         default=None,
         description="New metadata (replaces existing). Unchanged if null. Empty dict {} clears metadata.",
     )
+
+    # Provenance tracking fields (optional) — confidence skipped (entity relationships have their own)
+    source_repo: str | None = Field(default=None, max_length=200, description="New repository source. Unchanged if null.")
+    source_files: list[str] | None = Field(default=None, description="New source files. Unchanged if null.")
+    source_url: str | None = Field(default=None, max_length=2048, description="New source URL. Unchanged if null.")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="New encoding agent. Unchanged if null.")
+    encoding_version: str | None = Field(default=None, max_length=50, description="New encoding version. Unchanged if null.")
+    agent_id: str | None = Field(default=None, max_length=100, description="New agent identity. Unchanged if null.")
+    agent_version: str | None = Field(default=None, max_length=50, description="New agent version. Unchanged if null.")
+    agent_model: str | None = Field(default=None, max_length=100, description="New LLM model. Unchanged if null.")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
 
     @field_validator("relationship_type")
     @classmethod

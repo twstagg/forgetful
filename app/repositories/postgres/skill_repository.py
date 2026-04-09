@@ -80,6 +80,15 @@ class PostgresSkillRepository:
                     importance=skill_data.importance,
                     project_id=skill_data.project_id,
                     embedding=embedding,
+                    source_repo=skill_data.source_repo,
+                    source_files=skill_data.source_files,
+                    source_url=skill_data.source_url,
+                    confidence=skill_data.confidence,
+                    encoding_agent=skill_data.encoding_agent,
+                    encoding_version=skill_data.encoding_version,
+                    agent_id=skill_data.agent_id,
+                    agent_version=skill_data.agent_version,
+                    agent_model=skill_data.agent_model,
                 )
 
                 session.add(skill_table)
@@ -906,4 +915,13 @@ class PostgresSkillRepository:
             project_id=row.project_id,
             created_at=row.created_at,
             updated_at=row.updated_at,
+            source_repo=row.source_repo,
+            source_files=row.source_files,
+            source_url=row.source_url,
+            confidence=row.confidence,
+            encoding_agent=row.encoding_agent,
+            encoding_version=row.encoding_version,
+            agent_id=row.agent_id,
+            agent_version=row.agent_version,
+            agent_model=row.agent_model,
         )

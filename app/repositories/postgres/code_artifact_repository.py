@@ -56,6 +56,15 @@ class PostgresCodeArtifactRepository:
                     language=artifact_data.language.lower(),  # Ensure lowercase
                     tags=artifact_data.tags,
                     project_id=artifact_data.project_id,
+                    source_repo=artifact_data.source_repo,
+                    source_files=artifact_data.source_files,
+                    source_url=artifact_data.source_url,
+                    confidence=artifact_data.confidence,
+                    encoding_agent=artifact_data.encoding_agent,
+                    encoding_version=artifact_data.encoding_version,
+                    agent_id=artifact_data.agent_id,
+                    agent_version=artifact_data.agent_version,
+                    agent_model=artifact_data.agent_model,
                 )
 
                 session.add(artifact_table)

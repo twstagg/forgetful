@@ -102,6 +102,21 @@ class MemoryCreate(BaseModel):
         max_length=50,
         description="Version of encoding process/prompt",
     )
+    agent_id: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Agent identity (e.g., 'CodeAgentUltra')",
+    )
+    agent_version: str | None = Field(
+        default=None,
+        max_length=50,
+        description="Agent version (e.g., '1.0')",
+    )
+    agent_model: str | None = Field(
+        default=None,
+        max_length=100,
+        description="LLM model used (e.g., 'claude-sonnet-4-6')",
+    )
 
     @field_validator("keywords", "tags")
     @classmethod
@@ -212,6 +227,21 @@ class MemoryUpdate(BaseModel):
         None,
         max_length=50,
         description="New encoding process version. Unchanged if null.",
+    )
+    agent_id: str | None = Field(
+        None,
+        max_length=100,
+        description="New agent identity. Unchanged if null.",
+    )
+    agent_version: str | None = Field(
+        None,
+        max_length=50,
+        description="New agent version. Unchanged if null.",
+    )
+    agent_model: str | None = Field(
+        None,
+        max_length=100,
+        description="New LLM model. Unchanged if null.",
     )
 
     @field_validator("keywords", "tags")

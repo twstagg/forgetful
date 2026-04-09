@@ -32,6 +32,10 @@ from app.models.entity_models import (
     EntityUpdate,
 )
 from app.protocols.entity_protocol import EntityRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -126,6 +130,7 @@ class EntityService:
             },
         )
 
+        entity_data = apply_provenance_defaults(entity_data)
         entity = await self.entity_repo.create_entity(
             user_id=user_id,
             entity_data=entity_data,
@@ -375,6 +380,8 @@ class EntityService:
                 "user_id": str(user_id),
             },
         )
+
+        entity_data = apply_provenance_defaults_for_update(entity_data)
 
         # Get existing entity for change detection
         existing_entity = await self.entity_repo.get_entity_by_id(
@@ -752,6 +759,7 @@ class EntityService:
             },
         )
 
+        relationship_data = apply_provenance_defaults(relationship_data)
         relationship = await self.entity_repo.create_entity_relationship(
             user_id=user_id,
             relationship_data=relationship_data,
@@ -856,6 +864,8 @@ class EntityService:
                 "user_id": str(user_id),
             },
         )
+
+        relationship_data = apply_provenance_defaults_for_update(relationship_data)
 
         # Note: The repo doesn't have a direct get_relationship_by_id, so we'll emit
         # the event unconditionally without a changes dict

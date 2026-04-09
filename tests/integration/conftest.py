@@ -225,6 +225,9 @@ class InMemoryMemoryRepository(MemoryRepository):
             confidence=memory.confidence,
             encoding_agent=memory.encoding_agent,
             encoding_version=memory.encoding_version,
+            agent_id=memory.agent_id,
+            agent_version=memory.agent_version,
+            agent_model=memory.agent_model,
             created_at=now,
             updated_at=now,
         )
@@ -648,6 +651,15 @@ class InMemoryProjectRepository(ProjectRepository):
             status=project_data.status,
             repo_name=project_data.repo_name,
             notes=project_data.notes,
+            source_repo=project_data.source_repo,
+            source_files=project_data.source_files,
+            source_url=project_data.source_url,
+            confidence=project_data.confidence,
+            encoding_agent=project_data.encoding_agent,
+            encoding_version=project_data.encoding_version,
+            agent_id=project_data.agent_id,
+            agent_version=project_data.agent_version,
+            agent_model=project_data.agent_model,
             memory_count=0,
             created_at=now,
             updated_at=now,
@@ -738,6 +750,15 @@ class InMemoryCodeArtifactRepository(CodeArtifactRepository):
             project_id=None,
             created_at=now,
             updated_at=now,
+            source_repo=artifact_data.source_repo,
+            source_files=artifact_data.source_files,
+            source_url=artifact_data.source_url,
+            confidence=artifact_data.confidence,
+            encoding_agent=artifact_data.encoding_agent,
+            encoding_version=artifact_data.encoding_version,
+            agent_id=artifact_data.agent_id,
+            agent_version=artifact_data.agent_version,
+            agent_model=artifact_data.agent_model,
         )
 
         if user_id not in self._artifacts:
@@ -848,6 +869,15 @@ class InMemoryDocumentRepository(DocumentRepository):
             project_id=None,
             created_at=now,
             updated_at=now,
+            source_repo=document_data.source_repo,
+            source_files=document_data.source_files,
+            source_url=document_data.source_url,
+            confidence=document_data.confidence,
+            encoding_agent=document_data.encoding_agent,
+            encoding_version=document_data.encoding_version,
+            agent_id=document_data.agent_id,
+            agent_version=document_data.agent_version,
+            agent_model=document_data.agent_model,
         )
 
         if user_id not in self._documents:
@@ -957,6 +987,15 @@ class InMemoryFileRepository(FileRepository):
             project_id=file_data.project_id,
             created_at=now,
             updated_at=now,
+            source_repo=file_data.source_repo,
+            source_files=file_data.source_files,
+            source_url=file_data.source_url,
+            confidence=file_data.confidence,
+            encoding_agent=file_data.encoding_agent,
+            encoding_version=file_data.encoding_version,
+            agent_id=file_data.agent_id,
+            agent_version=file_data.agent_version,
+            agent_model=file_data.agent_model,
         )
 
         if user_id not in self._files:
@@ -1069,6 +1108,15 @@ class InMemoryEntityRepository(EntityRepository):
             project_ids=entity_data.project_ids or [],
             created_at=now,
             updated_at=now,
+            source_repo=entity_data.source_repo,
+            source_files=entity_data.source_files,
+            source_url=entity_data.source_url,
+            confidence=entity_data.confidence,
+            encoding_agent=entity_data.encoding_agent,
+            encoding_version=entity_data.encoding_version,
+            agent_id=entity_data.agent_id,
+            agent_version=entity_data.agent_version,
+            agent_model=entity_data.agent_model,
         )
 
         if user_id not in self._entities:
@@ -1266,6 +1314,14 @@ class InMemoryEntityRepository(EntityRepository):
             metadata=relationship_data.metadata or {},
             created_at=now,
             updated_at=now,
+            source_repo=relationship_data.source_repo,
+            source_files=relationship_data.source_files,
+            source_url=relationship_data.source_url,
+            encoding_agent=relationship_data.encoding_agent,
+            encoding_version=relationship_data.encoding_version,
+            agent_id=relationship_data.agent_id,
+            agent_version=relationship_data.agent_version,
+            agent_model=relationship_data.agent_model,
         )
 
         if user_id not in self._relationships:
@@ -1413,6 +1469,15 @@ class InMemoryPlanRepository(PlanRepository):
             task_count=0,
             created_at=now,
             updated_at=now,
+            source_repo=plan_data.source_repo,
+            source_files=plan_data.source_files,
+            source_url=plan_data.source_url,
+            confidence=plan_data.confidence,
+            encoding_agent=plan_data.encoding_agent,
+            encoding_version=plan_data.encoding_version,
+            agent_id=plan_data.agent_id,
+            agent_version=plan_data.agent_version,
+            agent_model=plan_data.agent_model,
         )
 
         if user_id not in self._plans:
@@ -1527,6 +1592,15 @@ class InMemoryTaskRepository(TaskRepository):
             dependency_ids=[],
             created_at=now,
             updated_at=now,
+            source_repo=task_data.source_repo,
+            source_files=task_data.source_files,
+            source_url=task_data.source_url,
+            confidence=task_data.confidence,
+            encoding_agent=task_data.encoding_agent,
+            encoding_version=task_data.encoding_version,
+            agent_id=task_data.agent_id,
+            agent_version=task_data.agent_version,
+            agent_model=task_data.agent_model,
         )
 
         if user_id not in self._tasks:
@@ -1836,6 +1910,15 @@ class InMemorySkillRepository(SkillRepository):
             project_id=skill_data.project_id,
             created_at=now,
             updated_at=now,
+            source_repo=skill_data.source_repo,
+            source_files=skill_data.source_files,
+            source_url=skill_data.source_url,
+            confidence=skill_data.confidence,
+            encoding_agent=skill_data.encoding_agent,
+            encoding_version=skill_data.encoding_version,
+            agent_id=skill_data.agent_id,
+            agent_version=skill_data.agent_version,
+            agent_model=skill_data.agent_model,
         )
 
         if user_id not in self._skills:

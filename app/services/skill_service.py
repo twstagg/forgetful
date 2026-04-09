@@ -27,6 +27,10 @@ from app.models.skill_models import (
     SkillUpdate,
 )
 from app.protocols.skill_protocol import SkillRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -123,6 +127,7 @@ class SkillService:
             msg = f"A skill named '{skill_data.name}' already exists"
             raise ValueError(msg)
 
+        skill_data = apply_provenance_defaults(skill_data)
         skill = await self.skill_repo.create_skill(
             user_id=user_id,
             skill_data=skill_data,
@@ -291,6 +296,8 @@ class SkillService:
                 "user_id": str(user_id),
             },
         )
+
+        skill_data = apply_provenance_defaults_for_update(skill_data)
 
         # Get existing skill for change detection
         existing_skill = await self.skill_repo.get_skill_by_id(

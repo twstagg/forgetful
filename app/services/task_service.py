@@ -31,6 +31,10 @@ from app.models.plan_models import (
 )
 from app.protocols.task_protocol import TaskRepository
 from app.services.plan_service import PlanService
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -93,6 +97,7 @@ class TaskService:
             )
 
         # Create the task (without criteria/deps - repo handles basic creation)
+        task_data = apply_provenance_defaults(task_data)
         task = await self.task_repo.create_task(user_id=user_id, task_data=task_data)
 
         # Create inline criteria
@@ -154,6 +159,8 @@ class TaskService:
     ) -> Task | None:
         """PATCH for metadata only (title, description, priority). NOT for state changes."""
         logger.info("updating task", extra={"user_id": str(user_id), "task_id": task_id})
+
+        task_data = apply_provenance_defaults_for_update(task_data)
 
         existing = await self.task_repo.get_task_by_id(user_id=user_id, task_id=task_id)
         if not existing:

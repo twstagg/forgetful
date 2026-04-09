@@ -25,6 +25,10 @@ from app.models.code_artifact_models import (
     CodeArtifactUpdate,
 )
 from app.protocols.code_artifact_protocol import CodeArtifactRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -117,6 +121,7 @@ class CodeArtifactService:
             },
         )
 
+        artifact_data = apply_provenance_defaults(artifact_data)
         artifact = await self.artifact_repo.create_code_artifact(
             user_id=user_id,
             artifact_data=artifact_data,
@@ -285,6 +290,8 @@ class CodeArtifactService:
                 "user_id": str(user_id),
             },
         )
+
+        artifact_data = apply_provenance_defaults_for_update(artifact_data)
 
         # Get existing artifact for change detection
         existing_artifact = await self.artifact_repo.get_code_artifact_by_id(

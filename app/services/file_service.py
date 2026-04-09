@@ -25,6 +25,10 @@ from app.models.file_models import (
     FileUpdate,
 )
 from app.protocols.file_protocol import FileRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -114,6 +118,7 @@ class FileService:
             },
         )
 
+        file_data = apply_provenance_defaults(file_data)
         file = await self.file_repo.create_file(
             user_id=user_id,
             file_data=file_data,
@@ -279,6 +284,8 @@ class FileService:
                 "user_id": str(user_id),
             },
         )
+
+        file_data = apply_provenance_defaults_for_update(file_data)
 
         existing_file = await self.file_repo.get_file_by_id(
             user_id=user_id,

@@ -656,6 +656,56 @@ These settings control the planning and task management feature.
 
 ---
 
+## Provenance Defaults
+
+These settings allow you to stamp every object created through a Forgetful server instance with identifying information about the agent and software doing the encoding. Useful when multiple agents or tools write to the same knowledge base.
+
+### `ENCODING_AGENT`
+- **Default**: `""` (empty, not applied)
+- **Description**: Software or tool running the agent (e.g., the AI coding tool or script)
+- **Example**: `ENCODING_AGENT=OpenCode`
+
+### `ENCODING_VERSION`
+- **Default**: `""` (empty, not applied)
+- **Description**: Version of the encoding software
+- **Example**: `ENCODING_VERSION=1.3.13`
+
+### `AGENT_ID`
+- **Default**: `""` (empty, not applied)
+- **Description**: Identity of the agent doing the encoding (logical name, not an instance ID)
+- **Example**: `AGENT_ID=CodeAgentUltra`
+
+### `AGENT_VERSION`
+- **Default**: `""` (empty, not applied)
+- **Description**: Version of the agent
+- **Example**: `AGENT_VERSION=1.0`
+
+### `AGENT_MODEL`
+- **Default**: `""` (empty, not applied)
+- **Description**: LLM model the agent is running on
+- **Example**: `AGENT_MODEL=claude-sonnet-4-6`
+
+### `ENFORCE_ENV_OVERWRITE`
+- **Default**: `false`
+- **Description**: When `true`, environment-level provenance values override any values provided by the calling agent. Use this to enforce consistent provenance across a shared server regardless of what individual agents pass in.
+- **Values**: `true`, `false`
+- **Example**: `ENFORCE_ENV_OVERWRITE=true`
+
+### Example Configuration
+
+```bash
+# Tag all writes from this server with the encoding agent and model
+ENCODING_AGENT=OpenCode
+ENCODING_VERSION=1.3.13
+AGENT_ID=CodeAgentUltra
+AGENT_VERSION=1.0
+AGENT_MODEL=claude-sonnet-4-6
+# Prevent individual agents from overriding these values
+ENFORCE_ENV_OVERWRITE=true
+```
+
+---
+
 ## Activity Tracking Configuration
 
 Activity tracking provides an audit log of all entity lifecycle events (created, updated, deleted). This is an **experimental feature**.

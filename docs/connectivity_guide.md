@@ -115,6 +115,30 @@ See [VS Code MCP docs](https://code.visualstudio.com/docs/copilot/customization/
 }
 ```
 
+### STDIO with Provenance Tracking
+
+Tag all objects written by this server instance with agent and model identity. Set `ENFORCE_ENV_OVERWRITE=true` to ensure these values cannot be overridden by individual agents.
+
+```json
+{
+  "servers": {
+    "forgetful": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["forgetful-ai"],
+      "env": {
+        "ENCODING_AGENT": "VS Code Copilot",
+        "ENCODING_VERSION": "1.0",
+        "AGENT_ID": "my-coding-agent",
+        "AGENT_VERSION": "1.0",
+        "AGENT_MODEL": "claude-sonnet-4-6",
+        "ENFORCE_ENV_OVERWRITE": "true"
+      }
+    }
+  }
+}
+```
+
 ### HTTP Transport
 
 ```json
@@ -254,6 +278,27 @@ Add to your `opencode.json` or `opencode.jsonc` configuration file.
     "forgetful": {
       "type": "local",
       "command": ["uvx", "forgetful-ai"]
+    }
+  }
+}
+```
+
+### STDIO with Provenance Tracking
+
+```jsonc
+{
+  "mcp": {
+    "forgetful": {
+      "type": "local",
+      "command": ["uvx", "forgetful-ai"],
+      "env": {
+        "ENCODING_AGENT": "OpenCode",
+        "ENCODING_VERSION": "1.3.13",
+        "AGENT_ID": "my-coding-agent",
+        "AGENT_VERSION": "1.0",
+        "AGENT_MODEL": "claude-sonnet-4-6",
+        "ENFORCE_ENV_OVERWRITE": "true"
+      }
     }
   }
 }

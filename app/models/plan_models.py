@@ -143,6 +143,24 @@ class PlanCreate(BaseModel):
     context: str | None = Field(None, max_length=settings.PLAN_CONTEXT_MAX_LENGTH)
     status: PlanStatus = PlanStatus.DRAFT
 
+    # Provenance tracking fields (optional)
+    source_repo: str | None = Field(default=None, max_length=200, description="Repository/project source (e.g., 'owner/repo')")
+    source_files: list[str] | None = Field(default=None, description="Files that informed this (JSON list of paths)")
+    source_url: str | None = Field(default=None, max_length=2048, description="URL to original source material")
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="Encoding confidence score (0.0-1.0)")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="Software running the agent")
+    encoding_version: str | None = Field(default=None, max_length=50, description="Version of encoding software")
+    agent_id: str | None = Field(default=None, max_length=100, description="Agent identity")
+    agent_version: str | None = Field(default=None, max_length=50, description="Agent version")
+    agent_model: str | None = Field(default=None, max_length=100, description="LLM model used")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
+
     @field_validator("title")
     @classmethod
     def strip_title(cls, v: str) -> str:
@@ -160,6 +178,24 @@ class PlanUpdate(BaseModel):
     goal: str | None = Field(None, max_length=settings.PLAN_GOAL_MAX_LENGTH)
     context: str | None = Field(None, max_length=settings.PLAN_CONTEXT_MAX_LENGTH)
     status: PlanStatus | None = None
+
+    # Provenance tracking fields (optional)
+    source_repo: str | None = Field(default=None, max_length=200, description="New repository source. Unchanged if null.")
+    source_files: list[str] | None = Field(default=None, description="New source files. Unchanged if null.")
+    source_url: str | None = Field(default=None, max_length=2048, description="New source URL. Unchanged if null.")
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="New confidence score. Unchanged if null.")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="New encoding agent. Unchanged if null.")
+    encoding_version: str | None = Field(default=None, max_length=50, description="New encoding version. Unchanged if null.")
+    agent_id: str | None = Field(default=None, max_length=100, description="New agent identity. Unchanged if null.")
+    agent_version: str | None = Field(default=None, max_length=50, description="New agent version. Unchanged if null.")
+    agent_model: str | None = Field(default=None, max_length=100, description="New LLM model. Unchanged if null.")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
 
     @field_validator("title")
     @classmethod
@@ -210,6 +246,24 @@ class TaskCreate(BaseModel):
     criteria: list[CriterionCreate] | None = None
     dependency_ids: list[int] | None = None
 
+    # Provenance tracking fields (optional)
+    source_repo: str | None = Field(default=None, max_length=200, description="Repository/project source (e.g., 'owner/repo')")
+    source_files: list[str] | None = Field(default=None, description="Files that informed this (JSON list of paths)")
+    source_url: str | None = Field(default=None, max_length=2048, description="URL to original source material")
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="Encoding confidence score (0.0-1.0)")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="Software running the agent")
+    encoding_version: str | None = Field(default=None, max_length=50, description="Version of encoding software")
+    agent_id: str | None = Field(default=None, max_length=100, description="Agent identity")
+    agent_version: str | None = Field(default=None, max_length=50, description="Agent version")
+    agent_model: str | None = Field(default=None, max_length=100, description="LLM model used")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
+
     @field_validator("title")
     @classmethod
     def strip_title(cls, v: str) -> str:
@@ -226,6 +280,24 @@ class TaskUpdate(BaseModel):
     title: str | None = Field(None, max_length=settings.TASK_TITLE_MAX_LENGTH)
     description: str | None = Field(None, max_length=settings.TASK_DESCRIPTION_MAX_LENGTH)
     priority: TaskPriority | None = None
+
+    # Provenance tracking fields (optional)
+    source_repo: str | None = Field(default=None, max_length=200, description="New repository source. Unchanged if null.")
+    source_files: list[str] | None = Field(default=None, description="New source files. Unchanged if null.")
+    source_url: str | None = Field(default=None, max_length=2048, description="New source URL. Unchanged if null.")
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="New confidence score. Unchanged if null.")
+    encoding_agent: str | None = Field(default=None, max_length=100, description="New encoding agent. Unchanged if null.")
+    encoding_version: str | None = Field(default=None, max_length=50, description="New encoding version. Unchanged if null.")
+    agent_id: str | None = Field(default=None, max_length=100, description="New agent identity. Unchanged if null.")
+    agent_version: str | None = Field(default=None, max_length=50, description="New agent version. Unchanged if null.")
+    agent_model: str | None = Field(default=None, max_length=100, description="New LLM model. Unchanged if null.")
+
+    @field_validator("source_files")
+    @classmethod
+    def validate_source_files(cls, v):
+        if v is None:
+            return None
+        return [item.strip() for item in v if item.strip()]
 
     @field_validator("title")
     @classmethod
@@ -250,6 +322,18 @@ class Task(BaseModel):
     version: int = 1
     criteria: list[Criterion] = Field(default_factory=list)
     dependency_ids: list[int] = Field(default_factory=list)
+
+    # Provenance tracking fields
+    source_repo: str | None = None
+    source_files: list[str] | None = None
+    source_url: str | None = None
+    confidence: float | None = None
+    encoding_agent: str | None = None
+    encoding_version: str | None = None
+    agent_id: str | None = None
+    agent_version: str | None = None
+    agent_model: str | None = None
+
     created_at: datetime
     updated_at: datetime
 

@@ -91,6 +91,15 @@ class SqliteSkillRepository:
                     tags=skill_data.tags,
                     importance=skill_data.importance,
                     project_id=skill_data.project_id,
+                    source_repo=skill_data.source_repo,
+                    source_files=skill_data.source_files,
+                    source_url=skill_data.source_url,
+                    confidence=skill_data.confidence,
+                    encoding_agent=skill_data.encoding_agent,
+                    encoding_version=skill_data.encoding_version,
+                    agent_id=skill_data.agent_id,
+                    agent_version=skill_data.agent_version,
+                    agent_model=skill_data.agent_model,
                 )
 
                 session.add(skill_table)
@@ -1073,6 +1082,15 @@ class SqliteSkillRepository:
             tags=skill_table.tags,
             importance=skill_table.importance,
             project_id=skill_table.project_id,
+            source_repo=skill_table.source_repo,
+            source_files=skill_table.source_files,
+            source_url=skill_table.source_url,
+            confidence=skill_table.confidence,
+            encoding_agent=skill_table.encoding_agent,
+            encoding_version=skill_table.encoding_version,
+            agent_id=skill_table.agent_id,
+            agent_version=skill_table.agent_version,
+            agent_model=skill_table.agent_model,
             created_at=skill_table.created_at,
             updated_at=skill_table.updated_at,
         )

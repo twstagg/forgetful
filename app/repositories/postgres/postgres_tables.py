@@ -202,6 +202,9 @@ class MemoryTable(Base):
     confidence: Mapped[float] = mapped_column(nullable=True)
     encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
     encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
 
     # Lifecycle Management
     is_obsolete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -438,6 +441,17 @@ class ProjectsTable(Base):
     repo_name: Mapped[str] = mapped_column(String(255), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -515,6 +529,17 @@ class CodeArtifactsTable(Base):
     language: Mapped[str] = mapped_column(String(100), nullable=False)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
 
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -571,6 +596,17 @@ class DocumentsTable(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
 
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -626,6 +662,17 @@ class FilesTable(Base):
     mime_type: Mapped[str] = mapped_column(String(255), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
+
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -698,6 +745,17 @@ class SkillsTable(Base):
     # Embedding
     embedding: Mapped[Vector] = mapped_column(Vector(settings.EMBEDDING_DIMENSIONS), nullable=False)
 
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -765,6 +823,17 @@ class EntitiesTable(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
     aka: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)  # Alternative names/aliases
+
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -858,6 +927,16 @@ class EntityRelationshipsTable(Base):
     confidence: Mapped[float] = mapped_column(nullable=True)  # 0.0-1.0 confidence score
     relationship_metadata: Mapped[dict] = mapped_column(JSONB, nullable=True, default=dict)  # Flexible metadata (source, verification date, etc.)
 
+    # Provenance tracking (optional) — confidence skipped (entity relationships have their own)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -908,6 +987,17 @@ class PlansTable(Base):
     context: Mapped[str] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
 
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -955,6 +1045,17 @@ class TasksTable(Base):
     priority: Mapped[str] = mapped_column(String(5), default="P2", nullable=False)
     assigned_agent: Mapped[str] = mapped_column(String(200), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # Provenance tracking (optional)
+    source_repo: Mapped[str] = mapped_column(Text, nullable=True)
+    source_files: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    encoding_agent: Mapped[str] = mapped_column(Text, nullable=True)
+    encoding_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_version: Mapped[str] = mapped_column(Text, nullable=True)
+    agent_model: Mapped[str] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -70,6 +70,15 @@ class PostgresEntityRepository:
                     notes=entity_data.notes,
                     tags=entity_data.tags,
                     aka=entity_data.aka,
+                    source_repo=entity_data.source_repo,
+                    source_files=entity_data.source_files,
+                    source_url=entity_data.source_url,
+                    confidence=entity_data.confidence,
+                    encoding_agent=entity_data.encoding_agent,
+                    encoding_version=entity_data.encoding_version,
+                    agent_id=entity_data.agent_id,
+                    agent_version=entity_data.agent_version,
+                    agent_model=entity_data.agent_model,
                 )
 
                 # Handle project associations (many-to-many)
@@ -763,6 +772,14 @@ class PostgresEntityRepository:
                     strength=relationship_data.strength,
                     confidence=relationship_data.confidence,
                     relationship_metadata=relationship_data.metadata or {},
+                    source_repo=relationship_data.source_repo,
+                    source_files=relationship_data.source_files,
+                    source_url=relationship_data.source_url,
+                    encoding_agent=relationship_data.encoding_agent,
+                    encoding_version=relationship_data.encoding_version,
+                    agent_id=relationship_data.agent_id,
+                    agent_version=relationship_data.agent_version,
+                    agent_model=relationship_data.agent_model,
                 )
 
                 session.add(relationship_table)
@@ -780,6 +797,14 @@ class PostgresEntityRepository:
                     metadata=relationship_table.relationship_metadata,
                     created_at=relationship_table.created_at,
                     updated_at=relationship_table.updated_at,
+                    source_repo=relationship_table.source_repo,
+                    source_files=relationship_table.source_files,
+                    source_url=relationship_table.source_url,
+                    encoding_agent=relationship_table.encoding_agent,
+                    encoding_version=relationship_table.encoding_version,
+                    agent_id=relationship_table.agent_id,
+                    agent_version=relationship_table.agent_version,
+                    agent_model=relationship_table.agent_model,
                 )
 
         except NotFoundError:
@@ -872,6 +897,14 @@ class PostgresEntityRepository:
                         metadata=r.relationship_metadata,
                         created_at=r.created_at,
                         updated_at=r.updated_at,
+                        source_repo=r.source_repo,
+                        source_files=r.source_files,
+                        source_url=r.source_url,
+                        encoding_agent=r.encoding_agent,
+                        encoding_version=r.encoding_version,
+                        agent_id=r.agent_id,
+                        agent_version=r.agent_version,
+                        agent_model=r.agent_model,
                     )
                     for r in relationships
                 ]
@@ -952,6 +985,14 @@ class PostgresEntityRepository:
                     metadata=relationship_table.relationship_metadata,
                     created_at=relationship_table.created_at,
                     updated_at=relationship_table.updated_at,
+                    source_repo=relationship_table.source_repo,
+                    source_files=relationship_table.source_files,
+                    source_url=relationship_table.source_url,
+                    encoding_agent=relationship_table.encoding_agent,
+                    encoding_version=relationship_table.encoding_version,
+                    agent_id=relationship_table.agent_id,
+                    agent_version=relationship_table.agent_version,
+                    agent_model=relationship_table.agent_model,
                 )
 
         except NotFoundError:
@@ -1045,6 +1086,14 @@ class PostgresEntityRepository:
                         strength=r.strength,
                         confidence=r.confidence,
                         metadata=r.relationship_metadata,
+                        source_repo=r.source_repo,
+                        source_files=r.source_files,
+                        source_url=r.source_url,
+                        encoding_agent=r.encoding_agent,
+                        encoding_version=r.encoding_version,
+                        agent_id=r.agent_id,
+                        agent_version=r.agent_version,
+                        agent_model=r.agent_model,
                         created_at=r.created_at,
                         updated_at=r.updated_at,
                     )

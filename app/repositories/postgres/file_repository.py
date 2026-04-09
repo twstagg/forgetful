@@ -56,6 +56,15 @@ class PostgresFileRepository:
                     size_bytes=size_bytes,
                     tags=file_data.tags,
                     project_id=file_data.project_id,
+                    source_repo=file_data.source_repo,
+                    source_files=file_data.source_files,
+                    source_url=file_data.source_url,
+                    confidence=file_data.confidence,
+                    encoding_agent=file_data.encoding_agent,
+                    encoding_version=file_data.encoding_version,
+                    agent_id=file_data.agent_id,
+                    agent_version=file_data.agent_version,
+                    agent_model=file_data.agent_model,
                 )
 
                 session.add(file_table)
@@ -291,4 +300,13 @@ class PostgresFileRepository:
             project_id=file_table.project_id,
             created_at=file_table.created_at,
             updated_at=file_table.updated_at,
+            source_repo=file_table.source_repo,
+            source_files=file_table.source_files,
+            source_url=file_table.source_url,
+            confidence=file_table.confidence,
+            encoding_agent=file_table.encoding_agent,
+            encoding_version=file_table.encoding_version,
+            agent_id=file_table.agent_id,
+            agent_version=file_table.agent_version,
+            agent_model=file_table.agent_model,
         )

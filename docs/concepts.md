@@ -33,6 +33,9 @@ Good memories are:
 - `confidence` - How confident the encoding agent was (0.0-1.0)
 - `encoding_agent` - Which AI/process created this memory
 - `encoding_version` - Version of the encoding process
+- `agent_id` - Logical identity of the agent (e.g., 'CodeAgentUltra')
+- `agent_version` - Version of the agent
+- `agent_model` - LLM model used (e.g., 'claude-sonnet-4-6')
 
 ### Entities
 
@@ -151,6 +154,48 @@ Projects help you filter queries to relevant knowledge. When working on the e-co
 - "E-Commerce Platform Redesign" (status: active)
 - "Q4 Hiring Initiative" (status: completed)
 - "AI Agent Framework" (status: active)
+
+---
+
+## Provenance Tracking
+
+Forgetful supports optional provenance fields on all object types so you can trace where knowledge came from and which agent encoded it. This is particularly useful when multiple agents or tools write to the same knowledge base.
+
+### Supported Fields
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `source_repo` | Repository or project the knowledge came from | `"owner/repo"` |
+| `source_files` | List of file paths that informed this object | `["src/payments.py"]` |
+| `source_url` | URL to the original source material | `"https://github.com/..."` |
+| `confidence` | Encoding confidence score (0.0–1.0) | `0.9` |
+| `encoding_agent` | Software running the agent | `"OpenCode"` |
+| `encoding_version` | Version of the encoding software | `"1.3.13"` |
+| `agent_id` | Logical identity of the agent | `"CodeAgentUltra"` |
+| `agent_version` | Version of the agent | `"1.0"` |
+| `agent_model` | LLM model the agent used | `"claude-sonnet-4-6"` |
+
+### Coverage by Object Type
+
+- **All 9 fields**: Memories, Projects, Documents, Code Artifacts, Skills, Files, Entities, Plans, Tasks
+- **8 fields (no `confidence`)**: Entity relationships — these already carry their own relationship-level confidence
+- Memories previously had 6 fields; `agent_id`, `agent_version`, and `agent_model` were added to bring them in line with all other types
+
+### Environment-Level Defaults
+
+Six environment variables let a server operator set provenance defaults that apply automatically to every create operation, without requiring individual agents to pass these values explicitly:
+
+```
+ENCODING_AGENT, ENCODING_VERSION, AGENT_ID, AGENT_VERSION, AGENT_MODEL, ENFORCE_ENV_OVERWRITE
+```
+
+The `apply_provenance_defaults()` utility fills in any missing provenance fields from these env values at create time.
+
+### ENFORCE_ENV_OVERWRITE
+
+When `ENFORCE_ENV_OVERWRITE=true`, environment defaults **override** any provenance values the calling agent provides. This lets a server operator enforce consistent provenance across a shared instance regardless of what individual agents pass in — useful for audit or compliance scenarios where you need to guarantee which tool and model encoded each object.
+
+When `false` (the default), agent-provided values take precedence and env values only fill gaps.
 
 ---
 

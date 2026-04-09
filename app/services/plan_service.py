@@ -19,6 +19,10 @@ from app.models.plan_models import (
     PlanUpdate,
 )
 from app.protocols.plan_protocol import PlanRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -65,6 +69,7 @@ class PlanService:
 
     async def create_plan(self, user_id: UUID, plan_data: PlanCreate) -> Plan:
         logger.info("creating plan", extra={"user_id": str(user_id), "title": plan_data.title})
+        plan_data = apply_provenance_defaults(plan_data)
         plan = await self.plan_repo.create_plan(user_id=user_id, plan_data=plan_data)
         logger.info("plan created", extra={"plan_id": plan.id, "user_id": str(user_id)})
         await self._emit_event(
@@ -108,6 +113,8 @@ class PlanService:
         self, user_id: UUID, plan_id: int, plan_data: PlanUpdate,
     ) -> Plan | None:
         logger.info("updating plan", extra={"user_id": str(user_id), "plan_id": plan_id})
+
+        plan_data = apply_provenance_defaults_for_update(plan_data)
 
         existing = await self.plan_repo.get_plan_by_id(user_id=user_id, plan_id=plan_id)
         if not existing:

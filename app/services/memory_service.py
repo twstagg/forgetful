@@ -23,6 +23,10 @@ from app.models.memory_models import (
     MemoryUpdate,
 )
 from app.protocols.memory_protocol import MemoryRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 from app.utils.token_counter import TokenCounter
 
@@ -162,6 +166,7 @@ class MemoryService:
             user_id: User ID
             memory_data: Memory Create object with data to be created
         """
+        memory_data = apply_provenance_defaults(memory_data)
         memory = await self.memory_repo.create_memory(
             user_id=user_id,
             memory=memory_data,
@@ -229,6 +234,8 @@ class MemoryService:
             memory_id: memory_id of the memory being updated
             updated_memory: Memory Update object containg the data to be updated
         """
+        updated_memory = apply_provenance_defaults_for_update(updated_memory)
+
         existing_memory = await self.memory_repo.get_memory_by_id(
             memory_id=memory_id,
             user_id=user_id,

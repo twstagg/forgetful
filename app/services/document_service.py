@@ -25,6 +25,10 @@ from app.models.document_models import (
     DocumentUpdate,
 )
 from app.protocols.document_protocol import DocumentRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -117,6 +121,7 @@ class DocumentService:
             },
         )
 
+        document_data = apply_provenance_defaults(document_data)
         document = await self.document_repo.create_document(
             user_id=user_id,
             document_data=document_data,
@@ -285,6 +290,8 @@ class DocumentService:
                 "user_id": str(user_id),
             },
         )
+
+        document_data = apply_provenance_defaults_for_update(document_data)
 
         # Get existing document for change detection
         existing_document = await self.document_repo.get_document_by_id(

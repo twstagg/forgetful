@@ -161,6 +161,14 @@ class Settings(BaseSettings):
     SKILL_ALLOWED_TOOLS_MAX_LENGTH: int = 2000
     SKILL_TAGS_MAX_COUNT: int = 10
 
+    # Provenance Defaults (auto-applied to all writes when set via MCP env config)
+    ENCODING_AGENT: str = ""        # Software running the agent (e.g., "OpenCode")
+    ENCODING_VERSION: str = ""      # Version of that software (e.g., "1.3.13")
+    AGENT_ID: str = ""              # Agent identity (e.g., "CodeAgentUltra")
+    AGENT_VERSION: str = ""         # Agent version (e.g., "1.0")
+    AGENT_MODEL: str = ""           # LLM model (e.g., "claude-sonnet-4-6")
+    ENFORCE_ENV_OVERWRITE: bool = False  # When True, env values override agent-provided values
+
     # Activity Tracking Configuration
     ACTIVITY_ENABLED: bool = False               # Enable activity event tracking
     ACTIVITY_RETENTION_DAYS: int | None = None   # Days to keep activity events (None = forever)

@@ -17,6 +17,10 @@ from app.models.project_models import (
     ProjectUpdate,
 )
 from app.protocols.project_protocol import ProjectRepository
+from app.utils.provenance import (
+    apply_provenance_defaults,
+    apply_provenance_defaults_for_update,
+)
 from app.utils.pydantic_helper import get_changed_fields
 
 if TYPE_CHECKING:
@@ -222,6 +226,7 @@ class ProjectService:
             },
         )
 
+        project_data = apply_provenance_defaults(project_data)
         project = await self.project_repo.create_project(
             user_id=user_id, project_data=project_data,
         )
@@ -270,6 +275,8 @@ class ProjectService:
             "updating project",
             extra={"user_id": str(user_id), "project_id": project_id},
         )
+
+        project_data = apply_provenance_defaults_for_update(project_data)
 
         # Pre-flight validation: get existing project
         existing_project = await self.project_repo.get_project_by_id(

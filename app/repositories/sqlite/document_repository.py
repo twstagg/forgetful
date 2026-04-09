@@ -63,6 +63,15 @@ class SqliteDocumentRepository:
                     size_bytes=size_bytes,
                     tags=document_data.tags,
                     project_id=document_data.project_id,
+                    source_repo=document_data.source_repo,
+                    source_files=document_data.source_files,
+                    source_url=document_data.source_url,
+                    confidence=document_data.confidence,
+                    encoding_agent=document_data.encoding_agent,
+                    encoding_version=document_data.encoding_version,
+                    agent_id=document_data.agent_id,
+                    agent_version=document_data.agent_version,
+                    agent_model=document_data.agent_model,
                 )
 
                 session.add(document_table)
