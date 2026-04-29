@@ -27,6 +27,7 @@ from app.repositories.postgres.postgres_tables import (
     MemoryLinkTable,
     MemoryTable,
     ProjectsTable,
+    SkillsTable,
     memory_project_association,
 )
 
@@ -205,6 +206,8 @@ class PostgresMemoryRepository:
                 await self._link_documents(session, new_memory, memory.document_ids, user_id)
             if memory.file_ids:
                 await self._link_files(session, new_memory, memory.file_ids, user_id)
+            if memory.skill_ids:
+                await self._link_skills(session, new_memory, memory.skill_ids, user_id)
 
             # Re-query with selectinload to ensure all relationships are properly loaded
             # This is the recommended async pattern per SQLAlchemy docs
@@ -216,6 +219,7 @@ class PostgresMemoryRepository:
                     selectinload(MemoryTable.code_artifacts),
                     selectinload(MemoryTable.documents),
                     selectinload(MemoryTable.files),
+                    selectinload(MemoryTable.skills),
                     selectinload(MemoryTable.linked_memories),
                     selectinload(MemoryTable.linking_memories),
                 )
@@ -735,6 +739,7 @@ class PostgresMemoryRepository:
                 selectinload(MemoryTable.code_artifacts),
                 selectinload(MemoryTable.documents),
                 selectinload(MemoryTable.files),
+                selectinload(MemoryTable.skills),
             )
             .where(*conditions)
         )
@@ -867,6 +872,28 @@ class PostgresMemoryRepository:
             raise NotFoundError(f"Files not found: {missing_ids}")
 
         await session.run_sync(lambda sync_session: memory.files.extend(files))
+
+    async def _link_skills(
+            self,
+            session,
+            memory: MemoryTable,
+            skill_ids: list[int],
+            user_id: UUID,
+    ) -> None:
+        """Link memory to skills"""
+        stmt = select(SkillsTable).where(
+            SkillsTable.id.in_(skill_ids),
+            SkillsTable.user_id == user_id,
+        )
+        result = await session.execute(stmt)
+        skills = result.scalars().all()
+
+        found_ids = {s.id for s in skills}
+        missing_ids = set(skill_ids) - found_ids
+        if missing_ids:
+            raise NotFoundError(f"Skills not found: {missing_ids}")
+
+        await session.run_sync(lambda sync_session: memory.skills.extend(skills))
 
     # ============ Re-embedding support methods ============
 
@@ -1358,6 +1385,137 @@ class PostgresMemoryRepository:
                 WHERE gt.node_type = 'file'
                   AND efa.file_id = gt.node_id
                   AND e.user_id = :user_id
+            """)
+
+        # Memory -> Skill via memory_skill_association
+        if include_memories and include_skills:
+            edge_queries.append("""
+                SELECT
+                    msa.skill_id AS target_id,
+                    'skill'::TEXT AS target_type
+                FROM memory_skill_association msa
+                INNER JOIN skills s ON s.id = msa.skill_id
+                WHERE gt.node_type = 'memory'
+                  AND msa.memory_id = gt.node_id
+                  AND s.user_id = :user_id
+            """)
+
+        # Skill -> Memory via memory_skill_association
+        if include_memories and include_skills:
+            edge_queries.append("""
+                SELECT
+                    msa.memory_id AS target_id,
+                    'memory'::TEXT AS target_type
+                FROM memory_skill_association msa
+                INNER JOIN memories m ON m.id = msa.memory_id
+                WHERE gt.node_type = 'skill'
+                  AND msa.skill_id = gt.node_id
+                  AND m.user_id = :user_id
+                  AND m.is_obsolete = false
+            """)
+
+        # Skill -> Project via skills.project_id FK
+        if include_skills and include_projects:
+            edge_queries.append("""
+                SELECT
+                    s.project_id AS target_id,
+                    'project'::TEXT AS target_type
+                FROM skills s
+                INNER JOIN projects p ON p.id = s.project_id
+                WHERE gt.node_type = 'skill'
+                  AND s.id = gt.node_id
+                  AND s.project_id IS NOT NULL
+                  AND p.user_id = :user_id
+            """)
+
+        # Project -> Skill via skills.project_id FK
+        if include_skills and include_projects:
+            edge_queries.append("""
+                SELECT
+                    s.id AS target_id,
+                    'skill'::TEXT AS target_type
+                FROM skills s
+                WHERE gt.node_type = 'project'
+                  AND s.project_id = gt.node_id
+                  AND s.user_id = :user_id
+            """)
+
+        # Skill -> File via skill_file_association
+        if include_skills and include_files:
+            edge_queries.append("""
+                SELECT
+                    sfa.file_id AS target_id,
+                    'file'::TEXT AS target_type
+                FROM skill_file_association sfa
+                INNER JOIN files f ON f.id = sfa.file_id
+                WHERE gt.node_type = 'skill'
+                  AND sfa.skill_id = gt.node_id
+                  AND f.user_id = :user_id
+            """)
+
+        # File -> Skill via skill_file_association
+        if include_skills and include_files:
+            edge_queries.append("""
+                SELECT
+                    sfa.skill_id AS target_id,
+                    'skill'::TEXT AS target_type
+                FROM skill_file_association sfa
+                INNER JOIN skills s ON s.id = sfa.skill_id
+                WHERE gt.node_type = 'file'
+                  AND sfa.file_id = gt.node_id
+                  AND s.user_id = :user_id
+            """)
+
+        # Skill -> CodeArtifact via skill_code_artifact_association
+        if include_skills and include_code_artifacts:
+            edge_queries.append("""
+                SELECT
+                    sca.code_artifact_id AS target_id,
+                    'code_artifact'::TEXT AS target_type
+                FROM skill_code_artifact_association sca
+                INNER JOIN code_artifacts ca ON ca.id = sca.code_artifact_id
+                WHERE gt.node_type = 'skill'
+                  AND sca.skill_id = gt.node_id
+                  AND ca.user_id = :user_id
+            """)
+
+        # CodeArtifact -> Skill via skill_code_artifact_association
+        if include_skills and include_code_artifacts:
+            edge_queries.append("""
+                SELECT
+                    sca.skill_id AS target_id,
+                    'skill'::TEXT AS target_type
+                FROM skill_code_artifact_association sca
+                INNER JOIN skills s ON s.id = sca.skill_id
+                WHERE gt.node_type = 'code_artifact'
+                  AND sca.code_artifact_id = gt.node_id
+                  AND s.user_id = :user_id
+            """)
+
+        # Skill -> Document via skill_document_association
+        if include_skills and include_documents:
+            edge_queries.append("""
+                SELECT
+                    sda.document_id AS target_id,
+                    'document'::TEXT AS target_type
+                FROM skill_document_association sda
+                INNER JOIN documents d ON d.id = sda.document_id
+                WHERE gt.node_type = 'skill'
+                  AND sda.skill_id = gt.node_id
+                  AND d.user_id = :user_id
+            """)
+
+        # Document -> Skill via skill_document_association
+        if include_skills and include_documents:
+            edge_queries.append("""
+                SELECT
+                    sda.skill_id AS target_id,
+                    'skill'::TEXT AS target_type
+                FROM skill_document_association sda
+                INNER JOIN skills s ON s.id = sda.skill_id
+                WHERE gt.node_type = 'document'
+                  AND sda.document_id = gt.node_id
+                  AND s.user_id = :user_id
             """)
 
         # If no edges to traverse, just return the center node

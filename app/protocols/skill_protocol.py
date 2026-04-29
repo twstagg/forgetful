@@ -219,3 +219,24 @@ class SkillRepository(Protocol):
     ) -> dict:
         """Unlink a skill from a document."""
         ...
+
+    async def get_all_skill_file_links(
+        self,
+        user_id: UUID,
+    ) -> list[tuple[int, int]]:
+        """Get all skill-file associations for a user (for graph visualization)."""
+        ...
+
+    async def get_all_skill_code_artifact_links(
+        self,
+        user_id: UUID,
+    ) -> list[tuple[int, int]]:
+        """Get all skill-code_artifact associations for a user (for graph visualization)."""
+        ...
+
+    async def get_all_skill_document_links(
+        self,
+        user_id: UUID,
+    ) -> list[tuple[int, int]]:
+        """Get all skill-document associations for a user (for graph visualization)."""
+        ...

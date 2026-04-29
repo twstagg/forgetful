@@ -28,6 +28,7 @@ from app.repositories.sqlite.sqlite_tables import (
     MemoryLinkTable,
     MemoryTable,
     ProjectsTable,
+    SkillsTable,
 )
 
 logger = logging.getLogger(__name__)
@@ -266,6 +267,8 @@ class SqliteMemoryRepository:
                 await self._link_documents(session, new_memory, memory.document_ids, user_id)
             if memory.file_ids:
                 await self._link_files(session, new_memory, memory.file_ids, user_id)
+            if memory.skill_ids:
+                await self._link_skills(session, new_memory, memory.skill_ids, user_id)
 
             # Re-query with selectinload to ensure all relationships are properly loaded
             stmt = (
@@ -276,6 +279,7 @@ class SqliteMemoryRepository:
                     selectinload(MemoryTable.code_artifacts),
                     selectinload(MemoryTable.documents),
                     selectinload(MemoryTable.files),
+                    selectinload(MemoryTable.skills),
                     selectinload(MemoryTable.linked_memories),
                     selectinload(MemoryTable.linking_memories),
                 )
@@ -783,6 +787,7 @@ class SqliteMemoryRepository:
                 selectinload(MemoryTable.code_artifacts),
                 selectinload(MemoryTable.documents),
                 selectinload(MemoryTable.files),
+                selectinload(MemoryTable.skills),
             )
             .where(MemoryTable.user_id == str(user_id))
         )
@@ -904,6 +909,21 @@ class SqliteMemoryRepository:
             raise NotFoundError(f"Files not found: {missing_ids}")
 
         await session.run_sync(lambda sync_session: memory.files.extend(files))
+
+    async def _link_skills(self, session, memory: MemoryTable, skill_ids: list[int], user_id: UUID) -> None:
+        """Link memory to skills"""
+        stmt = select(SkillsTable).where(
+            SkillsTable.id.in_(skill_ids), SkillsTable.user_id == str(user_id),
+        )
+        result = await session.execute(stmt)
+        skills = result.scalars().all()
+
+        found_ids = {s.id for s in skills}
+        missing_ids = set(skill_ids) - found_ids
+        if missing_ids:
+            raise NotFoundError(f"Skills not found: {missing_ids}")
+
+        await session.run_sync(lambda sync_session: memory.skills.extend(skills))
 
     # ============ Re-embedding support methods ============
 
@@ -1516,6 +1536,203 @@ class SqliteMemoryRepository:
                   AND :include_files = 1
                   AND :include_entities = 1
                   AND instr(gt.path, 'entity_' || CAST(efa.entity_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Memory -> Skill via memory_skill_association
+                SELECT
+                    msa.skill_id,
+                    'skill',
+                    gt.depth + 1,
+                    gt.path || ',' || 'skill_' || CAST(msa.skill_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN memory_skill_association msa ON (
+                    gt.node_type = 'memory'
+                    AND msa.memory_id = gt.node_id
+                )
+                INNER JOIN skills s ON s.id = msa.skill_id
+                WHERE gt.depth < :max_depth
+                  AND s.user_id = :user_id
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'skill_' || CAST(msa.skill_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Skill -> Memory via memory_skill_association
+                SELECT
+                    msa.memory_id,
+                    'memory',
+                    gt.depth + 1,
+                    gt.path || ',' || 'memory_' || CAST(msa.memory_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN memory_skill_association msa ON (
+                    gt.node_type = 'skill'
+                    AND msa.skill_id = gt.node_id
+                )
+                INNER JOIN memories m ON m.id = msa.memory_id
+                WHERE gt.depth < :max_depth
+                  AND m.user_id = :user_id
+                  AND m.is_obsolete = 0
+                  AND :include_memories = 1
+                  AND instr(gt.path, 'memory_' || CAST(msa.memory_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Skill -> Project via skills.project_id FK
+                SELECT
+                    s.project_id,
+                    'project',
+                    gt.depth + 1,
+                    gt.path || ',' || 'project_' || CAST(s.project_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skills s ON (
+                    gt.node_type = 'skill'
+                    AND s.id = gt.node_id
+                    AND s.project_id IS NOT NULL
+                )
+                INNER JOIN projects p ON p.id = s.project_id
+                WHERE gt.depth < :max_depth
+                  AND p.user_id = :user_id
+                  AND :include_projects = 1
+                  AND instr(gt.path, 'project_' || CAST(s.project_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Project -> Skill via skills.project_id FK
+                SELECT
+                    s.id,
+                    'skill',
+                    gt.depth + 1,
+                    gt.path || ',' || 'skill_' || CAST(s.id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skills s ON (
+                    gt.node_type = 'project'
+                    AND s.project_id = gt.node_id
+                )
+                WHERE gt.depth < :max_depth
+                  AND s.user_id = :user_id
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'skill_' || CAST(s.id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Skill -> File via skill_file_association
+                SELECT
+                    sfa.file_id,
+                    'file',
+                    gt.depth + 1,
+                    gt.path || ',' || 'file_' || CAST(sfa.file_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skill_file_association sfa ON (
+                    gt.node_type = 'skill'
+                    AND sfa.skill_id = gt.node_id
+                )
+                INNER JOIN files f ON f.id = sfa.file_id
+                WHERE gt.depth < :max_depth
+                  AND f.user_id = :user_id
+                  AND :include_files = 1
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'file_' || CAST(sfa.file_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- File -> Skill via skill_file_association
+                SELECT
+                    sfa.skill_id,
+                    'skill',
+                    gt.depth + 1,
+                    gt.path || ',' || 'skill_' || CAST(sfa.skill_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skill_file_association sfa ON (
+                    gt.node_type = 'file'
+                    AND sfa.file_id = gt.node_id
+                )
+                INNER JOIN skills s ON s.id = sfa.skill_id
+                WHERE gt.depth < :max_depth
+                  AND s.user_id = :user_id
+                  AND :include_files = 1
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'skill_' || CAST(sfa.skill_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Skill -> CodeArtifact via skill_code_artifact_association
+                SELECT
+                    sca.code_artifact_id,
+                    'code_artifact',
+                    gt.depth + 1,
+                    gt.path || ',' || 'code_artifact_' || CAST(sca.code_artifact_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skill_code_artifact_association sca ON (
+                    gt.node_type = 'skill'
+                    AND sca.skill_id = gt.node_id
+                )
+                INNER JOIN code_artifacts ca ON ca.id = sca.code_artifact_id
+                WHERE gt.depth < :max_depth
+                  AND ca.user_id = :user_id
+                  AND :include_code_artifacts = 1
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'code_artifact_' || CAST(sca.code_artifact_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- CodeArtifact -> Skill via skill_code_artifact_association
+                SELECT
+                    sca.skill_id,
+                    'skill',
+                    gt.depth + 1,
+                    gt.path || ',' || 'skill_' || CAST(sca.skill_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skill_code_artifact_association sca ON (
+                    gt.node_type = 'code_artifact'
+                    AND sca.code_artifact_id = gt.node_id
+                )
+                INNER JOIN skills s ON s.id = sca.skill_id
+                WHERE gt.depth < :max_depth
+                  AND s.user_id = :user_id
+                  AND :include_code_artifacts = 1
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'skill_' || CAST(sca.skill_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Skill -> Document via skill_document_association
+                SELECT
+                    sda.document_id,
+                    'document',
+                    gt.depth + 1,
+                    gt.path || ',' || 'document_' || CAST(sda.document_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skill_document_association sda ON (
+                    gt.node_type = 'skill'
+                    AND sda.skill_id = gt.node_id
+                )
+                INNER JOIN documents d ON d.id = sda.document_id
+                WHERE gt.depth < :max_depth
+                  AND d.user_id = :user_id
+                  AND :include_documents = 1
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'document_' || CAST(sda.document_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Document -> Skill via skill_document_association
+                SELECT
+                    sda.skill_id,
+                    'skill',
+                    gt.depth + 1,
+                    gt.path || ',' || 'skill_' || CAST(sda.skill_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN skill_document_association sda ON (
+                    gt.node_type = 'document'
+                    AND sda.document_id = gt.node_id
+                )
+                INNER JOIN skills s ON s.id = sda.skill_id
+                WHERE gt.depth < :max_depth
+                  AND s.user_id = :user_id
+                  AND :include_documents = 1
+                  AND :include_skills = 1
+                  AND instr(gt.path, 'skill_' || CAST(sda.skill_id AS TEXT)) = 0
             )
             SELECT node_id, node_type, MIN(depth) as depth
             FROM graph_traverse
@@ -1535,6 +1752,7 @@ class SqliteMemoryRepository:
             "include_documents": 1 if include_documents else 0,
             "include_code_artifacts": 1 if include_code_artifacts else 0,
             "include_files": 1 if include_files else 0,
+            "include_skills": 1 if include_skills else 0,
             "limit_plus_one": max_nodes + 1,  # +1 to detect truncation
         }
 

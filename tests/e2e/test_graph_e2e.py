@@ -634,3 +634,543 @@ async def test_graph_offset_beyond_total(http_client):
 
     # Metadata should still be present
     assert data["meta"]["has_more"] is False
+
+
+# Tiny 1x1 transparent PNG, base64-encoded — small file payload for E2E tests
+TINY_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8A"
+    "AAAASUVORK5CYII="
+)
+
+
+@pytest.mark.e2e
+async def test_graph_includes_file_nodes(http_client):
+    """GET /api/v1/graph includes file nodes when files exist (PostgreSQL)."""
+    file_resp = await http_client.post("/api/v1/files", json={
+        "filename": "e2e-file-node.png",
+        "description": "File for PostgreSQL graph node test",
+        "data": TINY_PNG_BASE64,
+        "mime_type": "image/png",
+        "tags": ["e2e-test"],
+    })
+    assert file_resp.status_code in [200, 201]
+    file_id = file_resp.json()["id"]
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    file_nodes = [n for n in data["nodes"] if n["type"] == "file"]
+    assert len(file_nodes) >= 1
+    assert any(n["data"]["id"] == file_id for n in file_nodes)
+    assert "file_count" in data["meta"]
+    assert data["meta"]["file_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_memory_file_edges(http_client):
+    """Graph includes memory_file edges when memory linked to file (PostgreSQL)."""
+    file_resp = await http_client.post("/api/v1/files", json={
+        "filename": "e2e-linked-file.png",
+        "description": "File for memory_file edge test",
+        "data": TINY_PNG_BASE64,
+        "mime_type": "image/png",
+        "tags": ["e2e-test"],
+    })
+    file_id = file_resp.json()["id"]
+
+    await http_client.post("/api/v1/memories", json={
+        "title": "E2E File Linked Memory",
+        "content": "Memory linked to file for PostgreSQL E2E test",
+        "context": "Testing memory_file edges",
+        "keywords": ["file", "e2e"],
+        "tags": ["e2e-test"],
+        "importance": 7,
+        "file_ids": [file_id],
+    })
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    memory_file_edges = [e for e in data["edges"] if e["type"] == "memory_file"]
+    assert len(memory_file_edges) >= 1
+    assert "memory_file_count" in data["meta"]
+    assert data["meta"]["memory_file_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_file_project_edges(http_client):
+    """Graph includes file_project edges when file linked to project (PostgreSQL)."""
+    project_resp = await http_client.post("/api/v1/projects", json={
+        "name": "E2E File Edge Project",
+        "description": "Project for file_project edge test",
+        "project_type": "development",
+    })
+    project_id = project_resp.json()["id"]
+
+    await http_client.post("/api/v1/files", json={
+        "filename": "e2e-project-linked.png",
+        "description": "File linked to project",
+        "data": TINY_PNG_BASE64,
+        "mime_type": "image/png",
+        "tags": ["e2e-test"],
+        "project_id": project_id,
+    })
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    file_project_edges = [e for e in data["edges"] if e["type"] == "file_project"]
+    assert len(file_project_edges) >= 1
+    assert "file_project_count" in data["meta"]
+    assert data["meta"]["file_project_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_includes_skill_nodes(http_client):
+    """GET /api/v1/graph includes skill nodes when skills exist (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-node",
+        "description": "Skill for PostgreSQL graph node test",
+        "content": "# E2E Skill\n\nDoes nothing.",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    assert skill_resp.status_code in [200, 201]
+    skill_id = skill_resp.json()["id"]
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    skill_nodes = [n for n in data["nodes"] if n["type"] == "skill"]
+    assert len(skill_nodes) >= 1
+    assert any(n["data"]["id"] == skill_id for n in skill_nodes)
+    assert "skill_count" in data["meta"]
+    assert data["meta"]["skill_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_skill_project_edges(http_client):
+    """Graph includes skill_project edges when skill linked to project (PostgreSQL)."""
+    project_resp = await http_client.post("/api/v1/projects", json={
+        "name": "E2E Skill Edge Project",
+        "description": "Project for skill_project edge test",
+        "project_type": "development",
+    })
+    project_id = project_resp.json()["id"]
+
+    await http_client.post("/api/v1/skills", json={
+        "name": "e2e-project-linked-skill",
+        "description": "Skill linked to project",
+        "content": "# Project Skill",
+        "tags": ["e2e-test"],
+        "importance": 7,
+        "project_id": project_id,
+    })
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    skill_project_edges = [e for e in data["edges"] if e["type"] == "skill_project"]
+    assert len(skill_project_edges) >= 1
+    assert "skill_project_count" in data["meta"]
+    assert data["meta"]["skill_project_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_memory_skill_edges(http_client):
+    """Graph includes memory_skill edges when memory linked to skill (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-memory-linked-skill",
+        "description": "Skill linked from memory",
+        "content": "# Linked Skill\n\nFor memory_skill E2E test.",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    await http_client.post("/api/v1/memories", json={
+        "title": "E2E Skill Linked Memory",
+        "content": "Memory linked to skill for PostgreSQL E2E test",
+        "context": "Testing memory_skill edges",
+        "keywords": ["skill", "e2e"],
+        "tags": ["e2e-test"],
+        "importance": 7,
+        "skill_ids": [skill_id],
+    })
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    memory_skill_edges = [e for e in data["edges"] if e["type"] == "memory_skill"]
+    assert len(memory_skill_edges) >= 1
+    assert "memory_skill_count" in data["meta"]
+    assert data["meta"]["memory_skill_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_skill_file_edges(http_client):
+    """Graph includes skill_file edges when skill linked to file (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-file-linker",
+        "description": "Skill that links to file",
+        "content": "# Skill File Link",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    file_resp = await http_client.post("/api/v1/files", json={
+        "filename": "e2e-skill-linked.png",
+        "description": "File linked from skill",
+        "data": TINY_PNG_BASE64,
+        "mime_type": "image/png",
+    })
+    file_id = file_resp.json()["id"]
+
+    link_resp = await http_client.post(
+        f"/api/v1/skills/{skill_id}/files", json={"file_id": file_id},
+    )
+    assert link_resp.status_code in [200, 201]
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    edges = [e for e in data["edges"] if e["type"] == "skill_file"]
+    assert len(edges) >= 1
+    assert "skill_file_count" in data["meta"]
+    assert data["meta"]["skill_file_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_skill_code_artifact_edges(http_client):
+    """Graph includes skill_code_artifact edges when skill linked to artifact (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-artifact-linker",
+        "description": "Skill that links to artifact",
+        "content": "# Skill Artifact Link",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    artifact_resp = await http_client.post("/api/v1/code-artifacts", json={
+        "title": "E2E Skill Linked Artifact",
+        "description": "Artifact linked from skill",
+        "code": "x = 1",
+        "language": "python",
+    })
+    artifact_id = artifact_resp.json()["id"]
+
+    link_resp = await http_client.post(
+        f"/api/v1/skills/{skill_id}/code-artifacts",
+        json={"code_artifact_id": artifact_id},
+    )
+    assert link_resp.status_code in [200, 201]
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    edges = [e for e in data["edges"] if e["type"] == "skill_code_artifact"]
+    assert len(edges) >= 1
+    assert "skill_code_artifact_count" in data["meta"]
+    assert data["meta"]["skill_code_artifact_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_skill_document_edges(http_client):
+    """Graph includes skill_document edges when skill linked to document (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-document-linker",
+        "description": "Skill that links to document",
+        "content": "# Skill Document Link",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    doc_resp = await http_client.post("/api/v1/documents", json={
+        "title": "E2E Skill Linked Document",
+        "description": "Document linked from skill",
+        "content": "Document content",
+        "document_type": "text",
+    })
+    doc_id = doc_resp.json()["id"]
+
+    link_resp = await http_client.post(
+        f"/api/v1/skills/{skill_id}/documents",
+        json={"document_id": doc_id},
+    )
+    assert link_resp.status_code in [200, 201]
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    edges = [e for e in data["edges"] if e["type"] == "skill_document"]
+    assert len(edges) >= 1
+    assert "skill_document_count" in data["meta"]
+    assert data["meta"]["skill_document_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_entity_file_edges(http_client, postgres_app):
+    """Graph includes entity_file edges when entity linked to file (PostgreSQL)."""
+    from sqlalchemy import insert
+
+    from app.repositories.postgres.postgres_tables import entity_file_association
+
+    entity_resp = await http_client.post("/api/v1/entities", json={
+        "name": "E2E Entity For File Edge",
+        "entity_type": "Organization",
+        "notes": "Entity to link to file",
+    })
+    entity_id = entity_resp.json()["id"]
+
+    file_resp = await http_client.post("/api/v1/files", json={
+        "filename": "e2e-entity-linked.png",
+        "description": "File linked to entity",
+        "data": TINY_PNG_BASE64,
+        "mime_type": "image/png",
+        "tags": ["e2e-test"],
+    })
+    file_id = file_resp.json()["id"]
+
+    db_adapter = postgres_app.entity_service.entity_repo.db_adapter
+    async with db_adapter.system_session() as session:
+        await session.execute(
+            insert(entity_file_association).values(
+                entity_id=entity_id, file_id=file_id,
+            ),
+        )
+
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    data = response.json()
+
+    entity_file_edges = [e for e in data["edges"] if e["type"] == "entity_file"]
+    assert len(entity_file_edges) >= 1
+    assert "entity_file_count" in data["meta"]
+    assert data["meta"]["entity_file_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_subgraph_from_skill_center_postgres(http_client):
+    """Subgraph centered on skill returns skill node + linked file (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-center",
+        "description": "Skill at center",
+        "content": "# Center",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    file_resp = await http_client.post("/api/v1/files", json={
+        "filename": "e2e-skill-center-file.png",
+        "description": "File linked to center skill",
+        "data": TINY_PNG_BASE64,
+        "mime_type": "image/png",
+    })
+    file_id = file_resp.json()["id"]
+
+    await http_client.post(
+        f"/api/v1/skills/{skill_id}/files", json={"file_id": file_id},
+    )
+
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=skill_{skill_id}&node_types=skill,file",
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert any(n["id"] == f"skill_{skill_id}" for n in data["nodes"])
+    assert any(n["id"] == f"file_{file_id}" for n in data["nodes"])
+    skill_file_edges = [e for e in data["edges"] if e["type"] == "skill_file"]
+    assert len(skill_file_edges) >= 1
+
+
+@pytest.mark.e2e
+async def test_subgraph_traverses_memory_skill_postgres(http_client):
+    """CTE traverses memory↔skill association from memory center (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-mem-skill-trav",
+        "description": "Skill",
+        "content": "# T",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    mem_resp = await http_client.post("/api/v1/memories", json={
+        "title": "E2E Memory Skill Trav",
+        "content": "Memory traversed to skill",
+        "context": "Subgraph",
+        "keywords": ["t"],
+        "tags": ["e2e-test"],
+        "importance": 7,
+        "skill_ids": [skill_id],
+    })
+    memory_id = mem_resp.json()["id"]
+
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=memory_{memory_id}&node_types=memory,skill",
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert any(n["id"] == f"skill_{skill_id}" for n in data["nodes"])
+
+
+@pytest.mark.e2e
+async def test_subgraph_traverses_skill_to_code_artifact_postgres(http_client):
+    """CTE traverses skill↔code_artifact from skill center (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-artifact-trav",
+        "description": "Skill",
+        "content": "# T",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    artifact_resp = await http_client.post("/api/v1/code-artifacts", json={
+        "title": "E2E Artifact via skill",
+        "description": "d",
+        "code": "x=1",
+        "language": "python",
+    })
+    artifact_id = artifact_resp.json()["id"]
+
+    await http_client.post(
+        f"/api/v1/skills/{skill_id}/code-artifacts",
+        json={"code_artifact_id": artifact_id},
+    )
+
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=skill_{skill_id}"
+        "&node_types=skill,code_artifact",
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert any(n["id"] == f"code_artifact_{artifact_id}" for n in data["nodes"])
+
+
+@pytest.mark.e2e
+async def test_subgraph_traverses_skill_to_document_postgres(http_client):
+    """CTE traverses skill↔document from skill center (PostgreSQL)."""
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-doc-trav",
+        "description": "Skill",
+        "content": "# T",
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    doc_resp = await http_client.post("/api/v1/documents", json={
+        "title": "E2E Doc via skill",
+        "description": "d",
+        "content": "Document content",
+        "document_type": "text",
+    })
+    doc_id = doc_resp.json()["id"]
+
+    await http_client.post(
+        f"/api/v1/skills/{skill_id}/documents",
+        json={"document_id": doc_id},
+    )
+
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=skill_{skill_id}"
+        "&node_types=skill,document",
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert any(n["id"] == f"document_{doc_id}" for n in data["nodes"])
+
+
+@pytest.mark.e2e
+async def test_subgraph_traverses_skill_project_postgres(http_client):
+    """CTE traverses skill↔project from skill center (PostgreSQL)."""
+    project_resp = await http_client.post("/api/v1/projects", json={
+        "name": "E2E Skill CTE Project",
+        "description": "P",
+        "project_type": "development",
+    })
+    project_id = project_resp.json()["id"]
+
+    skill_resp = await http_client.post("/api/v1/skills", json={
+        "name": "e2e-skill-project-trav",
+        "description": "Skill linked to project",
+        "content": "# T",
+        "tags": ["e2e-test"],
+        "importance": 7,
+        "project_id": project_id,
+    })
+    skill_id = skill_resp.json()["id"]
+
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=skill_{skill_id}&node_types=skill,project",
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert any(n["id"] == f"project_{project_id}" for n in data["nodes"])
+
+
+_EXPECTED_NEW_META_KEYS = {
+    "file_count",
+    "skill_count",
+    "memory_file_count",
+    "file_project_count",
+    "entity_file_count",
+    "memory_skill_count",
+    "skill_project_count",
+    "skill_file_count",
+    "skill_code_artifact_count",
+    "skill_document_count",
+}
+
+
+@pytest.mark.e2e
+async def test_full_graph_meta_includes_all_skill_file_counts_postgres(http_client):
+    """Full /api/v1/graph meta exposes every skill_/file_ count field (PostgreSQL)."""
+    response = await http_client.get("/api/v1/graph")
+    assert response.status_code == 200
+    meta = response.json()["meta"]
+
+    missing = _EXPECTED_NEW_META_KEYS - set(meta.keys())
+    assert not missing, f"Missing meta keys in full graph: {missing}"
+
+
+@pytest.mark.e2e
+async def test_subgraph_meta_includes_all_skill_file_counts_postgres(http_client):
+    """Subgraph meta exposes every skill_/file_ count field (PostgreSQL)."""
+    mem_resp = await http_client.post("/api/v1/memories", json={
+        "title": "E2E Meta Shape",
+        "content": "C",
+        "context": "Testing meta shape",
+        "keywords": ["m"],
+        "tags": ["e2e-test"],
+        "importance": 7,
+    })
+    memory_id = mem_resp.json()["id"]
+
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=memory_{memory_id}",
+    )
+    assert response.status_code == 200
+    meta = response.json()["meta"]
+
+    missing = _EXPECTED_NEW_META_KEYS - set(meta.keys())
+    assert not missing, f"Missing meta keys in subgraph: {missing}"

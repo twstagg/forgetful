@@ -19,7 +19,22 @@ logger = logging.getLogger(__name__)
 def register(mcp: FastMCP):
     """Register graph REST routes with FastMCP"""
     # Constants for valid node types
-    ALL_NODE_TYPES = {"memory", "entity", "project", "document", "code_artifact"}
+    ALL_NODE_TYPES = {"memory", "entity", "project", "document", "code_artifact", "file", "skill"}
+
+    # Map node type to (service attr, feature flag name) for feature-flag checks.
+    # Types not listed here are always available (memory/entity/project/etc.).
+    FLAG_GATED_TYPES = {
+        "file": ("file_service", "FILES_ENABLED"),
+        "skill": ("skill_service", "SKILLS_ENABLED"),
+    }
+
+    def _resolve_available_node_types() -> set[str]:
+        """Return the set of node types available given current feature flags."""
+        available = set(ALL_NODE_TYPES)
+        for node_type, (service_attr, _flag_name) in FLAG_GATED_TYPES.items():
+            if getattr(mcp, service_attr, None) is None:
+                available.discard(node_type)
+        return available
 
     @mcp.custom_route("/api/v1/graph", methods=["GET"])
     async def get_graph(request: Request) -> JSONResponse:
@@ -50,6 +65,7 @@ def register(mcp: FastMCP):
         sort_order = params.get("sort_order", "desc")
 
         # Parse node_types parameter (new approach)
+        available_types = _resolve_available_node_types()
         node_types_str = params.get("node_types")
         if node_types_str:
             # node_types takes precedence over include_entities
@@ -60,19 +76,32 @@ def register(mcp: FastMCP):
                     {"error": f"Invalid node_types: {invalid_types}. Valid values: {', '.join(sorted(ALL_NODE_TYPES))}"},
                     status_code=400,
                 )
+            disabled_types = requested_types - available_types
+            if disabled_types:
+                disabled_flags = sorted({
+                    FLAG_GATED_TYPES[t][1] for t in disabled_types if t in FLAG_GATED_TYPES
+                })
+                return JSONResponse(
+                    {"error": f"Node type(s) {sorted(disabled_types)} are disabled. Enable {', '.join(disabled_flags)} to use."},
+                    status_code=400,
+                )
             include_memories = "memory" in requested_types
             include_entities = "entity" in requested_types
             include_projects = "project" in requested_types
             include_documents = "document" in requested_types
             include_code_artifacts = "code_artifact" in requested_types
+            include_files = "file" in requested_types
+            include_skills = "skill" in requested_types
         else:
-            # Fallback to legacy include_entities param, default all types
+            # Fallback to legacy include_entities param; default to ALL available types
             include_entities_str = params.get("include_entities", "true").lower()
-            include_memories = True  # Always include memories by default
+            include_memories = True
             include_entities = include_entities_str == "true"
-            include_projects = True  # New default: include all types
+            include_projects = True
             include_documents = True
             include_code_artifacts = True
+            include_files = "file" in available_types
+            include_skills = "skill" in available_types
 
         # Validate limit parameter
         try:
@@ -131,6 +160,8 @@ def register(mcp: FastMCP):
         seen_project_ids = set()
         seen_document_ids = set()
         seen_code_artifact_ids = set()
+        seen_file_ids = set()
+        seen_skill_ids = set()
         memories = []  # Store for edge building
 
         # Get memories with pagination
@@ -314,6 +345,55 @@ def register(mcp: FastMCP):
                     },
                 })
 
+        # Add file nodes
+        files = []
+        if include_files and getattr(mcp, "file_service", None):
+            files = await mcp.file_service.list_files(
+                user_id=user.id,
+            )
+
+            for file_summary in files:
+                seen_file_ids.add(file_summary.id)
+                nodes.append({
+                    "id": f"file_{file_summary.id}",
+                    "type": "file",
+                    "label": file_summary.filename,
+                    "data": {
+                        "id": file_summary.id,
+                        "filename": file_summary.filename,
+                        "description": file_summary.description,
+                        "mime_type": file_summary.mime_type,
+                        "size_bytes": file_summary.size_bytes,
+                        "tags": file_summary.tags,
+                        "project_id": file_summary.project_id,
+                        "created_at": file_summary.created_at.isoformat() if file_summary.created_at else None,
+                    },
+                })
+
+        # Add skill nodes
+        skills = []
+        if include_skills and getattr(mcp, "skill_service", None):
+            skills = await mcp.skill_service.list_skills(
+                user_id=user.id,
+            )
+
+            for skill_summary in skills:
+                seen_skill_ids.add(skill_summary.id)
+                nodes.append({
+                    "id": f"skill_{skill_summary.id}",
+                    "type": "skill",
+                    "label": skill_summary.name,
+                    "data": {
+                        "id": skill_summary.id,
+                        "name": skill_summary.name,
+                        "description": skill_summary.description,
+                        "tags": skill_summary.tags,
+                        "importance": skill_summary.importance,
+                        "project_id": skill_summary.project_id,
+                        "created_at": skill_summary.created_at.isoformat() if skill_summary.created_at else None,
+                    },
+                })
+
         # Add memory-project edges (from memory.project_ids)
         if include_memories and include_projects:
             for memory in memories:
@@ -404,6 +484,132 @@ def register(mcp: FastMCP):
                                 "type": "memory_code_artifact",
                             })
 
+        # Add memory-file edges (from memory.file_ids)
+        if include_memories and include_files:
+            for memory in memories:
+                for fid in (memory.file_ids or []):
+                    if fid in seen_file_ids:
+                        edge_id = f"memory_{memory.id}_file_{fid}"
+                        if edge_id not in seen_edge_ids:
+                            seen_edge_ids.add(edge_id)
+                            edges.append({
+                                "id": edge_id,
+                                "source": f"memory_{memory.id}",
+                                "target": f"file_{fid}",
+                                "type": "memory_file",
+                            })
+
+        # Add file-project edges (from file.project_id)
+        if include_files and include_projects:
+            for file_summary in files:
+                if file_summary.project_id and file_summary.project_id in seen_project_ids:
+                    edge_id = f"file_{file_summary.id}_project_{file_summary.project_id}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"file_{file_summary.id}",
+                            "target": f"project_{file_summary.project_id}",
+                            "type": "file_project",
+                        })
+
+        # Add entity-file edges (from entity_file_association)
+        if include_entities and include_files:
+            entity_file_links = await mcp.entity_service.get_all_entity_file_links(
+                user_id=user.id,
+            )
+            for entity_id, fid in entity_file_links:
+                if entity_id in seen_entity_ids and fid in seen_file_ids:
+                    edge_id = f"entity_{entity_id}_file_{fid}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"entity_{entity_id}",
+                            "target": f"file_{fid}",
+                            "type": "entity_file",
+                        })
+
+        # Add memory-skill edges (from memory.skill_ids)
+        if include_memories and include_skills:
+            for memory in memories:
+                for sid in (memory.skill_ids or []):
+                    if sid in seen_skill_ids:
+                        edge_id = f"memory_{memory.id}_skill_{sid}"
+                        if edge_id not in seen_edge_ids:
+                            seen_edge_ids.add(edge_id)
+                            edges.append({
+                                "id": edge_id,
+                                "source": f"memory_{memory.id}",
+                                "target": f"skill_{sid}",
+                                "type": "memory_skill",
+                            })
+
+        # Add skill-project edges (from skill.project_id)
+        if include_skills and include_projects:
+            for skill_summary in skills:
+                if skill_summary.project_id and skill_summary.project_id in seen_project_ids:
+                    edge_id = f"skill_{skill_summary.id}_project_{skill_summary.project_id}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"skill_{skill_summary.id}",
+                            "target": f"project_{skill_summary.project_id}",
+                            "type": "skill_project",
+                        })
+
+        # Add skill-file edges (from skill_file_association)
+        if include_skills and include_files and getattr(mcp, "skill_service", None):
+            skill_file_links = await mcp.skill_service.get_all_skill_file_links(
+                user_id=user.id,
+            )
+            for skill_id, fid in skill_file_links:
+                if skill_id in seen_skill_ids and fid in seen_file_ids:
+                    edge_id = f"skill_{skill_id}_file_{fid}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"skill_{skill_id}",
+                            "target": f"file_{fid}",
+                            "type": "skill_file",
+                        })
+
+        # Add skill-code_artifact edges (from skill_code_artifact_association)
+        if include_skills and include_code_artifacts and getattr(mcp, "skill_service", None):
+            skill_artifact_links = await mcp.skill_service.get_all_skill_code_artifact_links(
+                user_id=user.id,
+            )
+            for skill_id, artifact_id in skill_artifact_links:
+                if skill_id in seen_skill_ids and artifact_id in seen_code_artifact_ids:
+                    edge_id = f"skill_{skill_id}_code_artifact_{artifact_id}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"skill_{skill_id}",
+                            "target": f"code_artifact_{artifact_id}",
+                            "type": "skill_code_artifact",
+                        })
+
+        # Add skill-document edges (from skill_document_association)
+        if include_skills and include_documents and getattr(mcp, "skill_service", None):
+            skill_doc_links = await mcp.skill_service.get_all_skill_document_links(
+                user_id=user.id,
+            )
+            for skill_id, doc_id in skill_doc_links:
+                if skill_id in seen_skill_ids and doc_id in seen_document_ids:
+                    edge_id = f"skill_{skill_id}_document_{doc_id}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"skill_{skill_id}",
+                            "target": f"document_{doc_id}",
+                            "type": "skill_document",
+                        })
+
         # Count edges by type for meta
         memory_link_count = len([e for e in edges if e["type"] == "memory_link"])
         entity_relationship_count = len([e for e in edges if e["type"] == "entity_relationship"])
@@ -414,6 +620,14 @@ def register(mcp: FastMCP):
         code_artifact_project_count = len([e for e in edges if e["type"] == "code_artifact_project"])
         memory_document_count = len([e for e in edges if e["type"] == "memory_document"])
         memory_code_artifact_count = len([e for e in edges if e["type"] == "memory_code_artifact"])
+        memory_file_count = len([e for e in edges if e["type"] == "memory_file"])
+        file_project_count = len([e for e in edges if e["type"] == "file_project"])
+        entity_file_count = len([e for e in edges if e["type"] == "entity_file"])
+        memory_skill_count = len([e for e in edges if e["type"] == "memory_skill"])
+        skill_project_count = len([e for e in edges if e["type"] == "skill_project"])
+        skill_file_count = len([e for e in edges if e["type"] == "skill_file"])
+        skill_code_artifact_count = len([e for e in edges if e["type"] == "skill_code_artifact"])
+        skill_document_count = len([e for e in edges if e["type"] == "skill_document"])
 
         # Calculate memory count for pagination metadata
         memory_count = len([n for n in nodes if n["type"] == "memory"])
@@ -431,6 +645,8 @@ def register(mcp: FastMCP):
                 "project_count": len([n for n in nodes if n["type"] == "project"]),
                 "document_count": len([n for n in nodes if n["type"] == "document"]),
                 "code_artifact_count": len([n for n in nodes if n["type"] == "code_artifact"]),
+                "file_count": len([n for n in nodes if n["type"] == "file"]),
+                "skill_count": len([n for n in nodes if n["type"] == "skill"]),
                 "edge_count": len(edges),
                 "memory_link_count": memory_link_count,
                 "entity_relationship_count": entity_relationship_count,
@@ -441,6 +657,14 @@ def register(mcp: FastMCP):
                 "code_artifact_project_count": code_artifact_project_count,
                 "memory_document_count": memory_document_count,
                 "memory_code_artifact_count": memory_code_artifact_count,
+                "memory_file_count": memory_file_count,
+                "file_project_count": file_project_count,
+                "entity_file_count": entity_file_count,
+                "memory_skill_count": memory_skill_count,
+                "skill_project_count": skill_project_count,
+                "skill_file_count": skill_file_count,
+                "skill_code_artifact_count": skill_code_artifact_count,
+                "skill_document_count": skill_document_count,
             },
         })
 
@@ -696,18 +920,31 @@ def register(mcp: FastMCP):
                 status_code=400,
             )
 
-        # Parse node_types parameter (default: all 5 types)
-        node_types_str = params.get("node_types", "memory,entity,project,document,code_artifact")
-        node_types = [t.strip() for t in node_types_str.split(",") if t.strip()]
-        valid_types = {"memory", "entity", "project", "document", "code_artifact"}
-        invalid_types = set(node_types) - valid_types
-        if invalid_types:
-            return JSONResponse(
-                {"error": f"Invalid node_types: {invalid_types}. Valid values: memory, entity, project, document, code_artifact"},
-                status_code=400,
-            )
-        if not node_types:
-            node_types = ["memory", "entity", "project", "document", "code_artifact"]
+        # Parse node_types parameter — gated by feature flags
+        available_types = _resolve_available_node_types()
+        node_types_param = params.get("node_types")
+        if node_types_param is None:
+            # Default: every available type (silently omit disabled types)
+            node_types = sorted(available_types)
+        else:
+            node_types = [t.strip() for t in node_types_param.split(",") if t.strip()]
+            invalid_types = set(node_types) - ALL_NODE_TYPES
+            if invalid_types:
+                return JSONResponse(
+                    {"error": f"Invalid node_types: {invalid_types}. Valid values: {', '.join(sorted(ALL_NODE_TYPES))}"},
+                    status_code=400,
+                )
+            disabled_types = set(node_types) - available_types
+            if disabled_types:
+                disabled_flags = sorted({
+                    FLAG_GATED_TYPES[t][1] for t in disabled_types if t in FLAG_GATED_TYPES
+                })
+                return JSONResponse(
+                    {"error": f"Node type(s) {sorted(disabled_types)} are disabled. Enable {', '.join(disabled_flags)} to use."},
+                    status_code=400,
+                )
+            if not node_types:
+                node_types = sorted(available_types)
 
         # Validate max_nodes parameter
         max_nodes_str = params.get("max_nodes", "200")

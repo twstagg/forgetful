@@ -4,6 +4,44 @@ Uses in-memory SQLite for test isolation.
 Tests the /api/v1/graph endpoints.
 """
 import pytest
+from conftest import FEATURE_FLAGS, build_sqlite_app
+
+
+@pytest.fixture
+async def graph_http_client_factory(embedding_adapter, reranker_adapter):
+    """Factory that builds an http_client with a configurable feature-flag set."""
+    from fastmcp import Client
+    from httpx import ASGITransport, AsyncClient
+
+    contexts = []
+
+    async def _make(enabled_features: set[str]):
+        app_iter = build_sqlite_app(embedding_adapter, reranker_adapter, enabled_features=enabled_features)
+        app = await app_iter.__anext__()
+
+        client = Client(app)
+        await client.__aenter__()
+
+        asgi_app = app.http_app()
+        transport = ASGITransport(app=asgi_app)
+        http = AsyncClient(transport=transport, base_url="http://test")
+        await http.__aenter__()
+
+        contexts.append((http, client, app, app_iter))
+        return http, app
+
+    yield _make
+
+    for http, client, _app, app_iter in contexts:
+        try:
+            await http.__aexit__(None, None, None)
+            await client.__aexit__(None, None, None)
+            try:
+                await app_iter.__anext__()
+            except StopAsyncIteration:
+                pass
+        except Exception:
+            pass
 
 
 class TestGraphAPI:
@@ -1740,3 +1778,772 @@ class TestGraphNewNodeTypes:
         assert "code_artifact_project_count" in meta
         assert "memory_document_count" in meta
         assert "memory_code_artifact_count" in meta
+
+
+# Tiny 1x1 transparent PNG, base64-encoded — small file payload for tests
+TINY_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8A"
+    "AAAASUVORK5CYII="
+)
+
+
+class TestGraphFileNodes:
+    """Tests for file node type and memory_file edges in the full graph endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_graph_includes_file_nodes(self, http_client):
+        """GET /api/v1/graph includes file nodes when files exist."""
+        file_resp = await http_client.post("/api/v1/files", json={
+            "filename": "graph-test.png",
+            "description": "File for graph node test",
+            "data": TINY_PNG_BASE64,
+            "mime_type": "image/png",
+            "tags": ["test"],
+        })
+        assert file_resp.status_code in [200, 201]
+        file_id = file_resp.json()["id"]
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        file_nodes = [n for n in data["nodes"] if n["type"] == "file"]
+        assert len(file_nodes) >= 1
+        assert any(n["data"]["id"] == file_id for n in file_nodes)
+
+        assert "file_count" in data["meta"]
+        assert data["meta"]["file_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_memory_file_edges(self, http_client):
+        """Graph includes memory_file edges when memory linked to file."""
+        file_resp = await http_client.post("/api/v1/files", json={
+            "filename": "linked-file.png",
+            "description": "File to link from memory",
+            "data": TINY_PNG_BASE64,
+            "mime_type": "image/png",
+            "tags": ["test"],
+        })
+        file_id = file_resp.json()["id"]
+
+        await http_client.post("/api/v1/memories", json={
+            "title": "File Linked Memory",
+            "content": "Memory linked to file",
+            "context": "Testing memory_file edges",
+            "keywords": ["file"],
+            "tags": ["file-test"],
+            "importance": 7,
+            "file_ids": [file_id],
+        })
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        memory_file_edges = [e for e in data["edges"] if e["type"] == "memory_file"]
+        assert len(memory_file_edges) >= 1
+
+        assert "memory_file_count" in data["meta"]
+        assert data["meta"]["memory_file_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_file_project_edges(self, http_client):
+        """Graph includes file_project edges when file linked to project."""
+        project_resp = await http_client.post("/api/v1/projects", json={
+            "name": "File Edge Project",
+            "description": "Project for file edge test",
+            "project_type": "development",
+        })
+        project_id = project_resp.json()["id"]
+
+        await http_client.post("/api/v1/files", json={
+            "filename": "project-linked.png",
+            "description": "File linked to project",
+            "data": TINY_PNG_BASE64,
+            "mime_type": "image/png",
+            "tags": ["test"],
+            "project_id": project_id,
+        })
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        file_project_edges = [e for e in data["edges"] if e["type"] == "file_project"]
+        assert len(file_project_edges) >= 1
+
+        assert "file_project_count" in data["meta"]
+        assert data["meta"]["file_project_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_entity_file_edges(self, http_client, sqlite_app):
+        """Graph includes entity_file edges when entity linked to file."""
+        from sqlalchemy import insert
+
+        from app.repositories.sqlite.sqlite_tables import entity_file_association
+
+        entity_resp = await http_client.post("/api/v1/entities", json={
+            "name": "Entity For File Edge",
+            "entity_type": "Organization",
+            "notes": "Entity to link to file",
+        })
+        entity_id = entity_resp.json()["id"]
+
+        file_resp = await http_client.post("/api/v1/files", json={
+            "filename": "entity-linked.png",
+            "description": "File linked to entity",
+            "data": TINY_PNG_BASE64,
+            "mime_type": "image/png",
+            "tags": ["test"],
+        })
+        file_id = file_resp.json()["id"]
+
+        # No public API to populate entity_file_association — insert directly
+        db_adapter = sqlite_app.entity_service.entity_repo.db_adapter
+        async with db_adapter.system_session() as session:
+            await session.execute(
+                insert(entity_file_association).values(
+                    entity_id=entity_id, file_id=file_id,
+                ),
+            )
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        entity_file_edges = [e for e in data["edges"] if e["type"] == "entity_file"]
+        assert len(entity_file_edges) >= 1
+
+        assert "entity_file_count" in data["meta"]
+        assert data["meta"]["entity_file_count"] >= 1
+
+
+class TestGraphSkillNodes:
+    """Tests for skill node type and skill-related edges in the full graph endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_graph_includes_skill_nodes(self, http_client):
+        """GET /api/v1/graph includes skill nodes when skills exist."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "graph-test-skill",
+            "description": "Skill for graph node test",
+            "content": "# Test Skill\n\nDoes nothing.",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        assert skill_resp.status_code in [200, 201]
+        skill_id = skill_resp.json()["id"]
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        skill_nodes = [n for n in data["nodes"] if n["type"] == "skill"]
+        assert len(skill_nodes) >= 1
+        assert any(n["data"]["id"] == skill_id for n in skill_nodes)
+
+        assert "skill_count" in data["meta"]
+        assert data["meta"]["skill_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_memory_skill_edges(self, http_client):
+        """Graph includes memory_skill edges when memory linked to skill."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "memory-linked-skill",
+            "description": "Skill linked from memory",
+            "content": "# Linked Skill\n\nFor memory_skill edge test.",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        await http_client.post("/api/v1/memories", json={
+            "title": "Skill Linked Memory",
+            "content": "Memory linked to skill",
+            "context": "Testing memory_skill edges",
+            "keywords": ["skill"],
+            "tags": ["skill-test"],
+            "importance": 7,
+            "skill_ids": [skill_id],
+        })
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        memory_skill_edges = [e for e in data["edges"] if e["type"] == "memory_skill"]
+        assert len(memory_skill_edges) >= 1
+
+        assert "memory_skill_count" in data["meta"]
+        assert data["meta"]["memory_skill_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_skill_project_edges(self, http_client):
+        """Graph includes skill_project edges when skill linked to project."""
+        project_resp = await http_client.post("/api/v1/projects", json={
+            "name": "Skill Edge Project",
+            "description": "Project for skill edge test",
+            "project_type": "development",
+        })
+        project_id = project_resp.json()["id"]
+
+        await http_client.post("/api/v1/skills", json={
+            "name": "project-linked-skill",
+            "description": "Skill linked to project",
+            "content": "# Project Skill",
+            "tags": ["test"],
+            "importance": 7,
+            "project_id": project_id,
+        })
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        skill_project_edges = [e for e in data["edges"] if e["type"] == "skill_project"]
+        assert len(skill_project_edges) >= 1
+
+        assert "skill_project_count" in data["meta"]
+        assert data["meta"]["skill_project_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_skill_file_edges(self, http_client):
+        """Graph includes skill_file edges when skill linked to file."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "file-linker-skill",
+            "description": "Skill that links to file",
+            "content": "# Skill File Link",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        file_resp = await http_client.post("/api/v1/files", json={
+            "filename": "skill-linked.png",
+            "description": "File linked from skill",
+            "data": TINY_PNG_BASE64,
+            "mime_type": "image/png",
+        })
+        file_id = file_resp.json()["id"]
+
+        link_resp = await http_client.post(
+            f"/api/v1/skills/{skill_id}/files", json={"file_id": file_id},
+        )
+        assert link_resp.status_code in [200, 201]
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        skill_file_edges = [e for e in data["edges"] if e["type"] == "skill_file"]
+        assert len(skill_file_edges) >= 1
+        assert "skill_file_count" in data["meta"]
+        assert data["meta"]["skill_file_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_skill_code_artifact_edges(self, http_client):
+        """Graph includes skill_code_artifact edges when skill linked to artifact."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "artifact-linker-skill",
+            "description": "Skill that links to artifact",
+            "content": "# Skill Artifact Link",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        artifact_resp = await http_client.post("/api/v1/code-artifacts", json={
+            "title": "Skill Linked Artifact",
+            "description": "Artifact linked from skill",
+            "code": "x = 1",
+            "language": "python",
+        })
+        artifact_id = artifact_resp.json()["id"]
+
+        link_resp = await http_client.post(
+            f"/api/v1/skills/{skill_id}/code-artifacts",
+            json={"code_artifact_id": artifact_id},
+        )
+        assert link_resp.status_code in [200, 201]
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        edges = [e for e in data["edges"] if e["type"] == "skill_code_artifact"]
+        assert len(edges) >= 1
+        assert "skill_code_artifact_count" in data["meta"]
+        assert data["meta"]["skill_code_artifact_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_skill_document_edges(self, http_client):
+        """Graph includes skill_document edges when skill linked to document."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "document-linker-skill",
+            "description": "Skill that links to document",
+            "content": "# Skill Document Link",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        doc_resp = await http_client.post("/api/v1/documents", json={
+            "title": "Skill Linked Document",
+            "description": "Document linked from skill",
+            "content": "Document content",
+            "document_type": "text",
+        })
+        doc_id = doc_resp.json()["id"]
+
+        link_resp = await http_client.post(
+            f"/api/v1/skills/{skill_id}/documents",
+            json={"document_id": doc_id},
+        )
+        assert link_resp.status_code in [200, 201]
+
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        edges = [e for e in data["edges"] if e["type"] == "skill_document"]
+        assert len(edges) >= 1
+        assert "skill_document_count" in data["meta"]
+        assert data["meta"]["skill_document_count"] >= 1
+
+
+class TestSubgraphSkillEdges:
+    """Tests for skill_file/skill_code_artifact/skill_document edge emission in /subgraph endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_subgraph_includes_skill_file_edge(self, http_client):
+        """Subgraph emits skill_file edge when both skill and file are in result."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "subgraph-skill-file",
+            "description": "Skill linked to file",
+            "content": "# Subgraph",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        file_resp = await http_client.post("/api/v1/files", json={
+            "filename": "subgraph-file.png",
+            "description": "Linked file",
+            "data": TINY_PNG_BASE64,
+            "mime_type": "image/png",
+        })
+        file_id = file_resp.json()["id"]
+
+        # Link skill -> file
+        await http_client.post(
+            f"/api/v1/skills/{skill_id}/files", json={"file_id": file_id},
+        )
+
+        # Memory linked to BOTH skill and file (so CTE finds both via memory)
+        mem_resp = await http_client.post("/api/v1/memories", json={
+            "title": "Hub Memory",
+            "content": "Hub for skill+file traversal",
+            "context": "Subgraph test",
+            "keywords": ["hub"],
+            "tags": ["test"],
+            "importance": 7,
+            "skill_ids": [skill_id],
+            "file_ids": [file_id],
+        })
+        memory_id = mem_resp.json()["id"]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=memory_{memory_id}"
+            "&node_types=memory,skill,file",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        skill_file_edges = [e for e in data["edges"] if e["type"] == "skill_file"]
+        assert len(skill_file_edges) >= 1
+
+    @pytest.mark.asyncio
+    async def test_subgraph_includes_skill_code_artifact_edge(self, http_client):
+        """Subgraph emits skill_code_artifact edge when both endpoints in result."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "subgraph-skill-artifact",
+            "description": "Skill linked to artifact",
+            "content": "# Subgraph",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        artifact_resp = await http_client.post("/api/v1/code-artifacts", json={
+            "title": "Subgraph Artifact",
+            "description": "Artifact linked from skill",
+            "code": "x = 1",
+            "language": "python",
+        })
+        artifact_id = artifact_resp.json()["id"]
+
+        await http_client.post(
+            f"/api/v1/skills/{skill_id}/code-artifacts",
+            json={"code_artifact_id": artifact_id},
+        )
+
+        mem_resp = await http_client.post("/api/v1/memories", json={
+            "title": "Hub Memory CA",
+            "content": "Hub for skill+artifact traversal",
+            "context": "Subgraph test",
+            "keywords": ["hub"],
+            "tags": ["test"],
+            "importance": 7,
+            "skill_ids": [skill_id],
+            "code_artifact_ids": [artifact_id],
+        })
+        memory_id = mem_resp.json()["id"]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=memory_{memory_id}"
+            "&node_types=memory,skill,code_artifact",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        edges = [e for e in data["edges"] if e["type"] == "skill_code_artifact"]
+        assert len(edges) >= 1
+
+    @pytest.mark.asyncio
+    async def test_subgraph_includes_skill_document_edge(self, http_client):
+        """Subgraph emits skill_document edge when both endpoints in result."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "subgraph-skill-doc",
+            "description": "Skill linked to document",
+            "content": "# Subgraph",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        doc_resp = await http_client.post("/api/v1/documents", json={
+            "title": "Subgraph Document",
+            "description": "Document linked from skill",
+            "content": "Document content",
+            "document_type": "text",
+        })
+        doc_id = doc_resp.json()["id"]
+
+        await http_client.post(
+            f"/api/v1/skills/{skill_id}/documents",
+            json={"document_id": doc_id},
+        )
+
+        mem_resp = await http_client.post("/api/v1/memories", json={
+            "title": "Hub Memory Doc",
+            "content": "Hub for skill+doc traversal",
+            "context": "Subgraph test",
+            "keywords": ["hub"],
+            "tags": ["test"],
+            "importance": 7,
+            "skill_ids": [skill_id],
+            "document_ids": [doc_id],
+        })
+        memory_id = mem_resp.json()["id"]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=memory_{memory_id}"
+            "&node_types=memory,skill,document",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        edges = [e for e in data["edges"] if e["type"] == "skill_document"]
+        assert len(edges) >= 1
+
+
+class TestSubgraphSkillCTE:
+    """Tests for SQLite recursive CTE traversal across skill branches."""
+
+    @pytest.mark.asyncio
+    async def test_subgraph_from_skill_center(self, http_client):
+        """Subgraph centered on skill returns skill node + linked file at depth 1."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "skill-center",
+            "description": "Skill at center",
+            "content": "# Center Skill",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        file_resp = await http_client.post("/api/v1/files", json={
+            "filename": "skill-center-file.png",
+            "description": "File linked to center skill",
+            "data": TINY_PNG_BASE64,
+            "mime_type": "image/png",
+        })
+        file_id = file_resp.json()["id"]
+
+        await http_client.post(
+            f"/api/v1/skills/{skill_id}/files", json={"file_id": file_id},
+        )
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=skill_{skill_id}&node_types=skill,file",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert any(n["id"] == f"skill_{skill_id}" for n in data["nodes"])
+        assert any(n["id"] == f"file_{file_id}" for n in data["nodes"])
+        skill_file_edges = [e for e in data["edges"] if e["type"] == "skill_file"]
+        assert len(skill_file_edges) >= 1
+
+    @pytest.mark.asyncio
+    async def test_subgraph_traverses_memory_skill(self, http_client):
+        """CTE traverses memory↔skill association from memory center."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "memory-skill-traversal",
+            "description": "Skill for traversal test",
+            "content": "# Traversal",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        mem_resp = await http_client.post("/api/v1/memories", json={
+            "title": "Memory for skill traversal",
+            "content": "Memory traversed to skill",
+            "context": "Subgraph test",
+            "keywords": ["t"],
+            "tags": ["test"],
+            "importance": 7,
+            "skill_ids": [skill_id],
+        })
+        memory_id = mem_resp.json()["id"]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=memory_{memory_id}&node_types=memory,skill",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert any(n["id"] == f"skill_{skill_id}" for n in data["nodes"])
+
+    @pytest.mark.asyncio
+    async def test_subgraph_traverses_skill_project(self, http_client):
+        """CTE traverses skill↔project from skill center."""
+        project_resp = await http_client.post("/api/v1/projects", json={
+            "name": "Skill CTE Project",
+            "description": "P",
+            "project_type": "development",
+        })
+        project_id = project_resp.json()["id"]
+
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "skill-with-project",
+            "description": "Skill linked to project",
+            "content": "# T",
+            "tags": ["test"],
+            "importance": 7,
+            "project_id": project_id,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=skill_{skill_id}&node_types=skill,project",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert any(n["id"] == f"project_{project_id}" for n in data["nodes"])
+
+    @pytest.mark.asyncio
+    async def test_subgraph_traverses_skill_to_code_artifact(self, http_client):
+        """CTE traverses skill↔code_artifact from skill center."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "skill-with-artifact",
+            "description": "Skill linked to artifact",
+            "content": "# T",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        artifact_resp = await http_client.post("/api/v1/code-artifacts", json={
+            "title": "Artifact via skill",
+            "description": "d",
+            "code": "x = 1",
+            "language": "python",
+        })
+        artifact_id = artifact_resp.json()["id"]
+
+        await http_client.post(
+            f"/api/v1/skills/{skill_id}/code-artifacts",
+            json={"code_artifact_id": artifact_id},
+        )
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=skill_{skill_id}"
+            "&node_types=skill,code_artifact",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert any(n["id"] == f"code_artifact_{artifact_id}" for n in data["nodes"])
+
+    @pytest.mark.asyncio
+    async def test_subgraph_traverses_skill_to_document(self, http_client):
+        """CTE traverses skill↔document from skill center."""
+        skill_resp = await http_client.post("/api/v1/skills", json={
+            "name": "skill-with-document",
+            "description": "Skill linked to document",
+            "content": "# T",
+            "tags": ["test"],
+            "importance": 7,
+        })
+        skill_id = skill_resp.json()["id"]
+
+        doc_resp = await http_client.post("/api/v1/documents", json={
+            "title": "Document via skill",
+            "description": "d",
+            "content": "Document content",
+            "document_type": "text",
+        })
+        doc_id = doc_resp.json()["id"]
+
+        await http_client.post(
+            f"/api/v1/skills/{skill_id}/documents",
+            json={"document_id": doc_id},
+        )
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=skill_{skill_id}"
+            "&node_types=skill,document",
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        assert any(n["id"] == f"document_{doc_id}" for n in data["nodes"])
+
+
+class TestGraphFeatureFlagBehaviour:
+    """Tests that graph endpoints honour SKILLS_ENABLED / FILES_ENABLED."""
+
+    @pytest.mark.asyncio
+    async def test_full_graph_rejects_node_types_skill_when_disabled(self, graph_http_client_factory):
+        """Explicit node_types=skill returns 400 when skills feature is off."""
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"skills"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph?node_types=memory,skill")
+        assert response.status_code == 400
+        assert "skill" in response.json()["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_full_graph_rejects_node_types_file_when_disabled(self, graph_http_client_factory):
+        """Explicit node_types=file returns 400 when files feature is off."""
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"files"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph?node_types=memory,file")
+        assert response.status_code == 400
+        assert "file" in response.json()["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_subgraph_rejects_node_types_skill_when_disabled(self, graph_http_client_factory):
+        """Subgraph: explicit node_types=skill returns 400 when skills feature is off."""
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"skills"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        # Create a memory to act as center
+        mem_resp = await http.post("/api/v1/memories", json={
+            "title": "Center", "content": "C",
+            "context": "Test", "keywords": ["c"], "tags": ["t"], "importance": 7,
+        })
+        memory_id = mem_resp.json()["id"]
+
+        response = await http.get(
+            f"/api/v1/graph/subgraph?node_id=memory_{memory_id}"
+            "&node_types=memory,skill",
+        )
+        assert response.status_code == 400
+        assert "skill" in response.json()["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_default_omits_skill_when_disabled(self, graph_http_client_factory):
+        """Default GET /api/v1/graph silently omits skill nodes when disabled."""
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"skills"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        # Default request — no explicit node_types
+        response = await http.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        # No skill nodes; no error
+        assert all(n["type"] != "skill" for n in data["nodes"])
+
+    @pytest.mark.asyncio
+    async def test_default_omits_file_when_disabled(self, graph_http_client_factory):
+        """Default GET /api/v1/graph silently omits file nodes when disabled."""
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"files"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert all(n["type"] != "file" for n in data["nodes"])
+
+
+class TestGraphMetaShape:
+    """Regression: every new node/edge meta count appears in both graph endpoints."""
+
+    EXPECTED_NEW_KEYS = {
+        # Node count fields
+        "file_count",
+        "skill_count",
+        # Edge count fields added in Phase 1
+        "memory_file_count",
+        "file_project_count",
+        "entity_file_count",
+        "memory_skill_count",
+        "skill_project_count",
+        "skill_file_count",
+        "skill_code_artifact_count",
+        "skill_document_count",
+    }
+
+    @pytest.mark.asyncio
+    async def test_full_graph_meta_includes_all_skill_file_counts(self, http_client):
+        """Full /api/v1/graph meta exposes every skill_/file_ count field."""
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        meta = response.json()["meta"]
+
+        missing = self.EXPECTED_NEW_KEYS - set(meta.keys())
+        assert not missing, f"Missing meta keys in full graph: {missing}"
+
+    @pytest.mark.asyncio
+    async def test_subgraph_meta_includes_all_skill_file_counts(self, http_client):
+        """Subgraph meta exposes every skill_/file_ count field."""
+        mem_resp = await http_client.post("/api/v1/memories", json={
+            "title": "Meta Shape Memory",
+            "content": "C",
+            "context": "Testing meta shape",
+            "keywords": ["m"],
+            "tags": ["test"],
+            "importance": 7,
+        })
+        memory_id = mem_resp.json()["id"]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=memory_{memory_id}",
+        )
+        assert response.status_code == 200
+        meta = response.json()["meta"]
+
+        missing = self.EXPECTED_NEW_KEYS - set(meta.keys())
+        assert not missing, f"Missing meta keys in subgraph: {missing}"

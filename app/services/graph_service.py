@@ -50,6 +50,9 @@ class FileServiceProtocol(Protocol):
 # Protocol for skill service (to avoid circular imports)
 class SkillServiceProtocol(Protocol):
     async def get_skill(self, user_id: UUID, skill_id: int) -> Any: ...
+    async def get_all_skill_file_links(self, user_id: UUID) -> list[tuple[int, int]]: ...
+    async def get_all_skill_code_artifact_links(self, user_id: UUID) -> list[tuple[int, int]]: ...
+    async def get_all_skill_document_links(self, user_id: UUID) -> list[tuple[int, int]]: ...
 
 
 class GraphService:
@@ -883,5 +886,61 @@ class GraphService:
                             ))
                 except NotFoundError:
                     continue
+
+        # Fetch skill-to-file edges
+        if self.skill_service and skill_ids and file_ids:
+            skill_file_links = await self.skill_service.get_all_skill_file_links(
+                user_id=user_id,
+            )
+            skill_id_set = set(skill_ids)
+            for sid, fid in skill_file_links:
+                if sid in skill_id_set and fid in file_id_set:
+                    edge_id = f"skill_{sid}_file_{fid}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append(SubgraphEdge(
+                            id=edge_id,
+                            source=f"skill_{sid}",
+                            target=f"file_{fid}",
+                            type="skill_file",
+                        ))
+
+        # Fetch skill-to-code_artifact edges
+        if self.skill_service and skill_ids and code_artifact_ids:
+            skill_artifact_links = await self.skill_service.get_all_skill_code_artifact_links(
+                user_id=user_id,
+            )
+            skill_id_set = set(skill_ids)
+            code_artifact_id_set = set(code_artifact_ids)
+            for sid, aid in skill_artifact_links:
+                if sid in skill_id_set and aid in code_artifact_id_set:
+                    edge_id = f"skill_{sid}_code_artifact_{aid}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append(SubgraphEdge(
+                            id=edge_id,
+                            source=f"skill_{sid}",
+                            target=f"code_artifact_{aid}",
+                            type="skill_code_artifact",
+                        ))
+
+        # Fetch skill-to-document edges
+        if self.skill_service and skill_ids and document_ids:
+            skill_doc_links = await self.skill_service.get_all_skill_document_links(
+                user_id=user_id,
+            )
+            skill_id_set = set(skill_ids)
+            document_id_set = set(document_ids)
+            for sid, did in skill_doc_links:
+                if sid in skill_id_set and did in document_id_set:
+                    edge_id = f"skill_{sid}_document_{did}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append(SubgraphEdge(
+                            id=edge_id,
+                            source=f"skill_{sid}",
+                            target=f"document_{did}",
+                            type="skill_document",
+                        ))
 
         return edges

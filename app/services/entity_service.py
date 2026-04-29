@@ -1050,6 +1050,37 @@ class EntityService:
 
         return links
 
+    async def get_all_entity_file_links(
+        self,
+        user_id: UUID,
+    ) -> list[tuple[int, int]]:
+        """Get all entity-file links for graph visualization
+
+        Args:
+            user_id: User ID for ownership filtering
+
+        Returns:
+            List of (entity_id, file_id) tuples
+        """
+        logger.info(
+            "getting all entity-file links for graph",
+            extra={"user_id": str(user_id)},
+        )
+
+        links = await self.entity_repo.get_all_entity_file_links(
+            user_id=user_id,
+        )
+
+        logger.info(
+            "entity-file links retrieved for graph",
+            extra={
+                "count": len(links),
+                "user_id": str(user_id),
+            },
+        )
+
+        return links
+
     async def get_entity_memories(
         self,
         user_id: UUID,
