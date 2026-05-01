@@ -1042,6 +1042,8 @@ class PostgresMemoryRepository:
         include_code_artifacts: bool,
         include_files: bool,
         include_skills: bool = False,
+        include_plans: bool = False,
+        include_tasks: bool = False,
         max_nodes: int = 50,
     ) -> tuple[list[dict[str, Any]], bool]:
         """Traverse graph using recursive CTE from center node.
@@ -1516,6 +1518,57 @@ class PostgresMemoryRepository:
                 WHERE gt.node_type = 'document'
                   AND sda.document_id = gt.node_id
                   AND s.user_id = :user_id
+            """)
+
+        # Plan -> Project via plans.project_id FK
+        if include_plans and include_projects:
+            edge_queries.append("""
+                SELECT
+                    pl.project_id AS target_id,
+                    'project'::TEXT AS target_type
+                FROM plans pl
+                INNER JOIN projects p ON p.id = pl.project_id
+                WHERE gt.node_type = 'plan'
+                  AND pl.id = gt.node_id
+                  AND pl.project_id IS NOT NULL
+                  AND p.user_id = :user_id
+            """)
+
+        # Project -> Plan via plans.project_id FK
+        if include_plans and include_projects:
+            edge_queries.append("""
+                SELECT
+                    pl.id AS target_id,
+                    'plan'::TEXT AS target_type
+                FROM plans pl
+                WHERE gt.node_type = 'project'
+                  AND pl.project_id = gt.node_id
+                  AND pl.user_id = :user_id
+            """)
+
+        # Plan -> Task via tasks.plan_id FK
+        if include_plans and include_tasks:
+            edge_queries.append("""
+                SELECT
+                    t.id AS target_id,
+                    'task'::TEXT AS target_type
+                FROM tasks t
+                WHERE gt.node_type = 'plan'
+                  AND t.plan_id = gt.node_id
+                  AND t.user_id = :user_id
+            """)
+
+        # Task -> Plan via tasks.plan_id FK
+        if include_plans and include_tasks:
+            edge_queries.append("""
+                SELECT
+                    t.plan_id AS target_id,
+                    'plan'::TEXT AS target_type
+                FROM tasks t
+                INNER JOIN plans pl ON pl.id = t.plan_id
+                WHERE gt.node_type = 'task'
+                  AND t.id = gt.node_id
+                  AND pl.user_id = :user_id
             """)
 
         # If no edges to traverse, just return the center node

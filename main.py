@@ -280,6 +280,21 @@ async def lifespan(app):
     else:
         logger.info("Skills feature disabled (SKILLS_ENABLED=false)")
 
+    # Conditionally create plan/task services behind PLANNING_ENABLED (built before GraphService
+    # so they can be passed in as optional services)
+    plan_service = None
+    task_service = None
+
+    if settings.PLANNING_ENABLED:
+        from app.services.plan_service import PlanService
+        from app.services.task_service import TaskService
+
+        plan_service = PlanService(repos["plan"], event_bus=event_bus)
+        task_service = TaskService(repos["task"], plan_service=plan_service, event_bus=event_bus)
+        logger.info("Planning feature enabled")
+    else:
+        logger.info("Planning feature disabled (PLANNING_ENABLED=false)")
+
     graph_service = GraphService(
         repos["memory"],
         repos["entity"],
@@ -288,6 +303,8 @@ async def lifespan(app):
         code_artifact_service=code_artifact_service,
         file_service=file_service,
         skill_service=skill_service,
+        plan_service=plan_service,
+        task_service=task_service,
     )
 
     mcp.user_service = user_service
@@ -306,21 +323,10 @@ async def lifespan(app):
     if skill_service:
         mcp.skill_service = skill_service
 
-    # Conditionally create plan/task services behind PLANNING_ENABLED
-    plan_service = None
-    task_service = None
-
-    if settings.PLANNING_ENABLED:
-        from app.services.plan_service import PlanService
-        from app.services.task_service import TaskService
-
-        plan_service = PlanService(repos["plan"], event_bus=event_bus)
-        task_service = TaskService(repos["task"], plan_service=plan_service, event_bus=event_bus)
+    if plan_service:
         mcp.plan_service = plan_service
+    if task_service:
         mcp.task_service = task_service
-        logger.info("Planning feature enabled")
-    else:
-        logger.info("Planning feature disabled (PLANNING_ENABLED=false)")
 
     logger.info("Services initialized and attached to FastMCP instance")
 

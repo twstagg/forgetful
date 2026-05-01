@@ -1187,3 +1187,176 @@ async def test_subgraph_meta_includes_all_skill_file_counts_postgres(http_client
 
     missing = _EXPECTED_NEW_META_KEYS - set(meta.keys())
     assert not missing, f"Missing meta keys in subgraph: {missing}"
+
+
+# ---- Phase 2: Plan/Task graph nodes (PostgreSQL) ----
+
+async def _make_pg_project_plan_tasks(http_client, project_name="P", task_titles=("Task A",)):
+    project_resp = await http_client.post("/api/v1/projects", json={
+        "name": project_name,
+        "description": "P for plan/task graph e2e",
+        "project_type": "development",
+    })
+    assert project_resp.status_code in (200, 201)
+    project_id = project_resp.json()["id"]
+
+    plan_resp = await http_client.post("/api/v1/plans", json={
+        "title": f"{project_name} Plan",
+        "project_id": project_id,
+        "goal": "G",
+    })
+    assert plan_resp.status_code in (200, 201), plan_resp.text
+    plan_id = plan_resp.json()["id"]
+
+    task_ids = []
+    for title in task_titles:
+        task_resp = await http_client.post("/api/v1/tasks", json={
+            "title": title, "plan_id": plan_id,
+        })
+        assert task_resp.status_code in (200, 201), task_resp.text
+        task_ids.append(task_resp.json()["id"])
+    return project_id, plan_id, task_ids
+
+
+@pytest.mark.e2e
+async def test_graph_includes_plan_nodes_postgres(http_client):
+    _, plan_id, _ = await _make_pg_project_plan_tasks(http_client, "PG-PlanGraphTest")
+    response = await http_client.get("/api/v1/graph?node_types=memory,plan")
+    assert response.status_code == 200
+    data = response.json()
+    plan_nodes = [n for n in data["nodes"] if n["type"] == "plan"]
+    assert any(n["data"]["id"] == plan_id for n in plan_nodes)
+    assert data["meta"]["plan_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_includes_task_nodes_postgres(http_client):
+    _, _, task_ids = await _make_pg_project_plan_tasks(
+        http_client, "PG-TaskGraphTest", task_titles=("T1", "T2"),
+    )
+    response = await http_client.get("/api/v1/graph?node_types=memory,task")
+    assert response.status_code == 200
+    data = response.json()
+    task_nodes = [n for n in data["nodes"] if n["type"] == "task"]
+    for tid in task_ids:
+        assert any(n["data"]["id"] == tid for n in task_nodes)
+    assert data["meta"]["task_count"] >= 2
+
+
+@pytest.mark.e2e
+async def test_graph_plan_project_edge_postgres(http_client):
+    project_id, plan_id, _ = await _make_pg_project_plan_tasks(http_client, "PG-PPEdge")
+    response = await http_client.get("/api/v1/graph?node_types=plan,project")
+    assert response.status_code == 200
+    data = response.json()
+    edges = [e for e in data["edges"]
+             if e["type"] == "plan_project"
+             and e["source"] == f"plan_{plan_id}"
+             and e["target"] == f"project_{project_id}"]
+    assert len(edges) == 1
+    assert data["meta"]["plan_project_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_graph_plan_task_edge_postgres(http_client):
+    _, plan_id, task_ids = await _make_pg_project_plan_tasks(
+        http_client, "PG-PTEdge", task_titles=("OnlyTask",),
+    )
+    response = await http_client.get("/api/v1/graph?node_types=plan,task")
+    assert response.status_code == 200
+    data = response.json()
+    edges = [e for e in data["edges"]
+             if e["type"] == "plan_task"
+             and e["source"] == f"plan_{plan_id}"
+             and e["target"] == f"task_{task_ids[0]}"]
+    assert len(edges) == 1
+    assert data["meta"]["plan_task_count"] >= 1
+
+
+@pytest.mark.e2e
+async def test_subgraph_from_plan_postgres(http_client):
+    project_id, plan_id, task_ids = await _make_pg_project_plan_tasks(
+        http_client, "PG-PlanCenter", task_titles=("CTE1", "CTE2"),
+    )
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=plan_{plan_id}&depth=1"
+        "&node_types=plan,project,task",
+    )
+    assert response.status_code == 200
+    data = response.json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert f"plan_{plan_id}" in node_ids
+    assert f"project_{project_id}" in node_ids
+    for tid in task_ids:
+        assert f"task_{tid}" in node_ids
+
+
+@pytest.mark.e2e
+async def test_subgraph_from_task_postgres(http_client):
+    _, plan_id, task_ids = await _make_pg_project_plan_tasks(
+        http_client, "PG-TaskCenter", task_titles=("OneTask",),
+    )
+    task_id = task_ids[0]
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=task_{task_id}&depth=1"
+        "&node_types=task,plan",
+    )
+    assert response.status_code == 200
+    data = response.json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert f"task_{task_id}" in node_ids
+    assert f"plan_{plan_id}" in node_ids
+
+
+@pytest.mark.e2e
+async def test_subgraph_from_task_depth2_postgres(http_client):
+    project_id, plan_id, task_ids = await _make_pg_project_plan_tasks(
+        http_client, "PG-MHop", task_titles=("MHop",),
+    )
+    task_id = task_ids[0]
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=task_{task_id}&depth=2"
+        "&node_types=task,plan,project",
+    )
+    assert response.status_code == 200
+    data = response.json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert f"plan_{plan_id}" in node_ids
+    assert f"project_{project_id}" in node_ids
+
+
+@pytest.mark.e2e
+async def test_subgraph_from_project_to_plans_postgres(http_client):
+    project_id, plan_id, _ = await _make_pg_project_plan_tasks(http_client, "PG-ProjPlan")
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=project_{project_id}&depth=1"
+        "&node_types=project,plan",
+    )
+    assert response.status_code == 200
+    data = response.json()
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert f"plan_{plan_id}" in node_ids
+
+
+@pytest.mark.e2e
+async def test_subgraph_meta_includes_plan_task_counts_postgres(http_client):
+    _, plan_id, _ = await _make_pg_project_plan_tasks(http_client, "PG-MetaCounts")
+    response = await http_client.get(
+        f"/api/v1/graph/subgraph?node_id=plan_{plan_id}&depth=1",
+    )
+    assert response.status_code == 200
+    meta = response.json()["meta"]
+    for k in ["plan_count", "task_count", "plan_project_count", "plan_task_count"]:
+        assert k in meta
+
+
+@pytest.mark.e2e
+async def test_subgraph_nonexistent_plan_404_postgres(http_client):
+    response = await http_client.get("/api/v1/graph/subgraph?node_id=plan_999999")
+    assert response.status_code == 404
+
+
+@pytest.mark.e2e
+async def test_subgraph_nonexistent_task_404_postgres(http_client):
+    response = await http_client.get("/api/v1/graph/subgraph?node_id=task_999999")
+    assert response.status_code == 404

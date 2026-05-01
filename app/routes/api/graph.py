@@ -20,13 +20,15 @@ logger = logging.getLogger(__name__)
 def register(mcp: FastMCP):
     """Register graph REST routes with FastMCP"""
     # Constants for valid node types
-    ALL_NODE_TYPES = {"memory", "entity", "project", "document", "code_artifact", "file", "skill"}
+    ALL_NODE_TYPES = {"memory", "entity", "project", "document", "code_artifact", "file", "skill", "plan", "task"}
 
     # Map node type to (service attr, feature flag name) for feature-flag checks.
     # Types not listed here are always available (memory/entity/project/etc.).
     FLAG_GATED_TYPES = {
         "file": ("file_service", "FILES_ENABLED"),
         "skill": ("skill_service", "SKILLS_ENABLED"),
+        "plan": ("plan_service", "PLANNING_ENABLED"),
+        "task": ("task_service", "PLANNING_ENABLED"),
     }
 
     def _resolve_available_node_types() -> set[str]:
@@ -94,6 +96,8 @@ def register(mcp: FastMCP):
             include_code_artifacts = "code_artifact" in requested_types
             include_files = "file" in requested_types
             include_skills = "skill" in requested_types
+            include_plans = "plan" in requested_types
+            include_tasks = "task" in requested_types
         else:
             # Fallback to legacy include_entities param; default to ALL available types
             include_entities_str = params.get("include_entities", "true").lower()
@@ -104,6 +108,8 @@ def register(mcp: FastMCP):
             include_code_artifacts = True
             include_files = "file" in available_types
             include_skills = "skill" in available_types
+            include_plans = "plan" in available_types
+            include_tasks = "task" in available_types
 
         # Validate limit parameter (cap at configurable MAX_GRAPH_LIMIT, see issue #23)
         try:
@@ -164,6 +170,8 @@ def register(mcp: FastMCP):
         seen_code_artifact_ids = set()
         seen_file_ids = set()
         seen_skill_ids = set()
+        seen_plan_ids = set()
+        seen_task_ids = set()
         memories = []  # Store for edge building
 
         # Get memories with pagination
@@ -396,6 +404,56 @@ def register(mcp: FastMCP):
                     },
                 })
 
+        # Add plan nodes
+        plans = []
+        if include_plans and getattr(mcp, "plan_service", None):
+            plans = await mcp.plan_service.list_plans(user_id=user.id)
+            for plan_summary in plans:
+                seen_plan_ids.add(plan_summary.id)
+                nodes.append({
+                    "id": f"plan_{plan_summary.id}",
+                    "type": "plan",
+                    "label": plan_summary.title,
+                    "data": {
+                        "id": plan_summary.id,
+                        "title": plan_summary.title,
+                        "status": plan_summary.status.value if hasattr(plan_summary.status, "value") else plan_summary.status,
+                        "project_id": plan_summary.project_id,
+                        "task_count": plan_summary.task_count,
+                        "created_at": plan_summary.created_at.isoformat() if plan_summary.created_at else None,
+                        "updated_at": plan_summary.updated_at.isoformat() if plan_summary.updated_at else None,
+                    },
+                })
+
+        # Add task nodes
+        tasks = []
+        if include_tasks and getattr(mcp, "task_service", None):
+            # When plans are also requested, scope tasks to those plans (one query). Otherwise fetch all.
+            task_filter = sorted(seen_plan_ids) if include_plans else None
+            tasks = await mcp.task_service.list_tasks_for_user(
+                user_id=user.id, plan_ids=task_filter,
+            )
+            for task_summary in tasks:
+                seen_task_ids.add(task_summary.id)
+                nodes.append({
+                    "id": f"task_{task_summary.id}",
+                    "type": "task",
+                    "label": task_summary.title,
+                    "data": {
+                        "id": task_summary.id,
+                        "title": task_summary.title,
+                        "plan_id": task_summary.plan_id,
+                        "state": task_summary.state.value if hasattr(task_summary.state, "value") else task_summary.state,
+                        "priority": task_summary.priority.value if hasattr(task_summary.priority, "value") else task_summary.priority,
+                        "assigned_agent": task_summary.assigned_agent,
+                        "criteria_met": task_summary.criteria_met,
+                        "criteria_total": task_summary.criteria_total,
+                        "blocked": task_summary.blocked,
+                        "created_at": task_summary.created_at.isoformat() if task_summary.created_at else None,
+                        "updated_at": task_summary.updated_at.isoformat() if task_summary.updated_at else None,
+                    },
+                })
+
         # Add memory-project edges (from memory.project_ids)
         if include_memories and include_projects:
             for memory in memories:
@@ -612,6 +670,34 @@ def register(mcp: FastMCP):
                             "type": "skill_document",
                         })
 
+        # Add plan-project edges (from plan.project_id)
+        if include_plans and include_projects:
+            for plan_summary in plans:
+                if plan_summary.project_id and plan_summary.project_id in seen_project_ids:
+                    edge_id = f"plan_{plan_summary.id}_project_{plan_summary.project_id}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"plan_{plan_summary.id}",
+                            "target": f"project_{plan_summary.project_id}",
+                            "type": "plan_project",
+                        })
+
+        # Add plan-task edges (from task.plan_id)
+        if include_plans and include_tasks:
+            for task_summary in tasks:
+                if task_summary.plan_id in seen_plan_ids and task_summary.id in seen_task_ids:
+                    edge_id = f"plan_{task_summary.plan_id}_task_{task_summary.id}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append({
+                            "id": edge_id,
+                            "source": f"plan_{task_summary.plan_id}",
+                            "target": f"task_{task_summary.id}",
+                            "type": "plan_task",
+                        })
+
         # Count edges by type for meta
         memory_link_count = len([e for e in edges if e["type"] == "memory_link"])
         entity_relationship_count = len([e for e in edges if e["type"] == "entity_relationship"])
@@ -630,6 +716,8 @@ def register(mcp: FastMCP):
         skill_file_count = len([e for e in edges if e["type"] == "skill_file"])
         skill_code_artifact_count = len([e for e in edges if e["type"] == "skill_code_artifact"])
         skill_document_count = len([e for e in edges if e["type"] == "skill_document"])
+        plan_project_count = len([e for e in edges if e["type"] == "plan_project"])
+        plan_task_count = len([e for e in edges if e["type"] == "plan_task"])
 
         # Calculate memory count for pagination metadata
         memory_count = len([n for n in nodes if n["type"] == "memory"])
@@ -667,6 +755,10 @@ def register(mcp: FastMCP):
                 "skill_file_count": skill_file_count,
                 "skill_code_artifact_count": skill_code_artifact_count,
                 "skill_document_count": skill_document_count,
+                "plan_count": len([n for n in nodes if n["type"] == "plan"]),
+                "task_count": len([n for n in nodes if n["type"] == "task"]),
+                "plan_project_count": plan_project_count,
+                "plan_task_count": plan_task_count,
             },
         })
 
@@ -882,9 +974,9 @@ def register(mcp: FastMCP):
         older /graph/memory/{id} endpoint with better performance and entity support.
 
         Query params:
-            node_id: Center node in format "memory_{id}", "entity_{id}", "project_{id}", "document_{id}", or "code_artifact_{id}" (required)
+            node_id: Center node in format "memory_{id}", "entity_{id}", "project_{id}", "document_{id}", "code_artifact_{id}", "file_{id}", "skill_{id}", "plan_{id}", or "task_{id}" (required)
             depth: Traversal depth 1-3 (default 2)
-            node_types: Comma-separated list of types to include (default: "memory,entity,project,document,code_artifact")
+            node_types: Comma-separated list of types to include (default: "memory,entity,project,document,code_artifact,file,skill,plan,task")
             max_nodes: Safety limit (default 200, max configurable via
                        MAX_GRAPH_LIMIT setting / env var, defaults to 2000)
 
@@ -904,7 +996,7 @@ def register(mcp: FastMCP):
         node_id = params.get("node_id")
         if not node_id:
             return JSONResponse(
-                {"error": "Missing required parameter: node_id. Format: 'memory_{id}', 'entity_{id}', 'project_{id}', 'document_{id}', or 'code_artifact_{id}'"},
+                {"error": "Missing required parameter: node_id. Format: 'memory_{id}', 'entity_{id}', 'project_{id}', 'document_{id}', 'code_artifact_{id}', 'file_{id}', 'skill_{id}', 'plan_{id}', or 'task_{id}'"},
                 status_code=400,
             )
 
