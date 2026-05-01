@@ -251,6 +251,8 @@ async def build_sqlite_app(embedding_adapter, reranker_adapter, enabled_features
                 code_artifact_service=code_artifact_service,
                 file_service=file_service,
                 skill_service=skill_service,
+                plan_service=plan_service,
+                task_service=task_service,
             )
 
             # Store core services on FastMCP instance

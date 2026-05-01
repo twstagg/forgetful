@@ -1677,6 +1677,49 @@ class InMemoryTaskRepository(TaskRepository):
 
         return summaries
 
+    async def list_tasks_for_user(
+        self,
+        user_id: UUID,
+        plan_ids: list[int] | None = None,
+    ) -> list[TaskSummary]:
+        if plan_ids is not None and len(plan_ids) == 0:
+            return []
+        user_tasks = self._tasks.get(user_id, {})
+        if plan_ids is None:
+            tasks = list(user_tasks.values())
+        else:
+            allowed = set(plan_ids)
+            tasks = [t for t in user_tasks.values() if t.plan_id in allowed]
+        tasks.sort(key=lambda t: t.created_at)
+
+        summaries = []
+        for t in tasks:
+            criteria = await self.get_criteria_for_task(user_id, t.id)
+            deps = await self.get_dependencies(user_id, t.id)
+            dep_tasks_not_done = False
+            for dep_id in deps:
+                dep_task = user_tasks.get(dep_id)
+                if dep_task and dep_task.state != TaskState.DONE:
+                    dep_tasks_not_done = True
+                    break
+            summaries.append(
+                TaskSummary(
+                    id=t.id,
+                    title=t.title,
+                    plan_id=t.plan_id,
+                    state=t.state,
+                    priority=t.priority,
+                    assigned_agent=t.assigned_agent,
+                    version=t.version,
+                    criteria_met=sum(1 for c in criteria if c.met),
+                    criteria_total=len(criteria),
+                    blocked=dep_tasks_not_done,
+                    created_at=t.created_at,
+                    updated_at=t.updated_at,
+                ),
+            )
+        return summaries
+
     async def update_task(
         self, user_id: UUID, task_id: int, task_data: TaskUpdate,
     ) -> Task:

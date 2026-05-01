@@ -128,6 +128,63 @@ class PostgresTaskRepository:
                 ))
             return summaries
 
+    async def list_tasks_for_user(
+        self,
+        user_id: UUID,
+        plan_ids: list[int] | None = None,
+    ) -> list[TaskSummary]:
+        if plan_ids is not None and len(plan_ids) == 0:
+            return []
+        async with self.db_adapter.session(user_id) as session:
+            stmt = (
+                select(TasksTable)
+                .options(
+                    selectinload(TasksTable.criteria),
+                    selectinload(TasksTable.depends_on),
+                )
+                .where(TasksTable.user_id == user_id)
+            )
+            if plan_ids is not None:
+                stmt = stmt.where(TasksTable.plan_id.in_(plan_ids))
+            stmt = stmt.order_by(TasksTable.created_at.asc())
+
+            result = await session.execute(stmt)
+            tasks_orm = result.scalars().all()
+
+            summaries = []
+            for t in tasks_orm:
+                criteria_met = sum(1 for c in t.criteria if c.met)
+                criteria_total = len(t.criteria)
+                dep_ids = [d.depends_on_task_id for d in t.depends_on]
+                blocked = False
+                if dep_ids:
+                    for dep_id in dep_ids:
+                        dep_stmt = select(TasksTable.state).where(
+                            TasksTable.user_id == user_id,
+                            TasksTable.id == dep_id,
+                        )
+                        dep_result = await session.execute(dep_stmt)
+                        dep_state = dep_result.scalar_one_or_none()
+                        if dep_state != TaskState.DONE.value:
+                            blocked = True
+                            break
+
+                summaries.append(TaskSummary(
+                    id=t.id,
+                    title=t.title,
+                    plan_id=t.plan_id,
+                    state=TaskState(t.state),
+                    priority=TaskPriority(t.priority),
+                    assigned_agent=t.assigned_agent,
+                    version=t.version,
+                    criteria_met=criteria_met,
+                    criteria_total=criteria_total,
+                    blocked=blocked,
+                    created_at=t.created_at,
+                    updated_at=t.updated_at,
+                ))
+            return summaries
+
     async def update_task(
         self, user_id: UUID, task_id: int, task_data: TaskUpdate,
     ) -> Task:

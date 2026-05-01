@@ -1062,6 +1062,8 @@ class SqliteMemoryRepository:
         include_code_artifacts: bool,
         include_files: bool,
         include_skills: bool = False,
+        include_plans: bool = False,
+        include_tasks: bool = False,
         max_nodes: int = 50,
     ) -> tuple[list[dict[str, Any]], bool]:
         """Traverse graph using recursive CTE from center node.
@@ -1733,6 +1735,81 @@ class SqliteMemoryRepository:
                   AND :include_documents = 1
                   AND :include_skills = 1
                   AND instr(gt.path, 'skill_' || CAST(sda.skill_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Plan -> Project via plans.project_id FK
+                SELECT
+                    pl.project_id,
+                    'project',
+                    gt.depth + 1,
+                    gt.path || ',' || 'project_' || CAST(pl.project_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN plans pl ON (
+                    gt.node_type = 'plan'
+                    AND pl.id = gt.node_id
+                    AND pl.project_id IS NOT NULL
+                )
+                INNER JOIN projects p ON p.id = pl.project_id
+                WHERE gt.depth < :max_depth
+                  AND p.user_id = :user_id
+                  AND :include_projects = 1
+                  AND instr(gt.path, 'project_' || CAST(pl.project_id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Project -> Plan via plans.project_id FK
+                SELECT
+                    pl.id,
+                    'plan',
+                    gt.depth + 1,
+                    gt.path || ',' || 'plan_' || CAST(pl.id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN plans pl ON (
+                    gt.node_type = 'project'
+                    AND pl.project_id = gt.node_id
+                )
+                WHERE gt.depth < :max_depth
+                  AND pl.user_id = :user_id
+                  AND :include_plans = 1
+                  AND instr(gt.path, 'plan_' || CAST(pl.id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Plan -> Task via tasks.plan_id FK
+                SELECT
+                    t.id,
+                    'task',
+                    gt.depth + 1,
+                    gt.path || ',' || 'task_' || CAST(t.id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN tasks t ON (
+                    gt.node_type = 'plan'
+                    AND t.plan_id = gt.node_id
+                )
+                WHERE gt.depth < :max_depth
+                  AND t.user_id = :user_id
+                  AND :include_tasks = 1
+                  AND instr(gt.path, 'task_' || CAST(t.id AS TEXT)) = 0
+
+                UNION ALL
+
+                -- Task -> Plan via tasks.plan_id FK
+                SELECT
+                    t.plan_id,
+                    'plan',
+                    gt.depth + 1,
+                    gt.path || ',' || 'plan_' || CAST(t.plan_id AS TEXT)
+                FROM graph_traverse gt
+                INNER JOIN tasks t ON (
+                    gt.node_type = 'task'
+                    AND t.id = gt.node_id
+                )
+                INNER JOIN plans pl ON pl.id = t.plan_id
+                WHERE gt.depth < :max_depth
+                  AND pl.user_id = :user_id
+                  AND :include_plans = 1
+                  AND instr(gt.path, 'plan_' || CAST(t.plan_id AS TEXT)) = 0
             )
             SELECT node_id, node_type, MIN(depth) as depth
             FROM graph_traverse
@@ -1753,6 +1830,8 @@ class SqliteMemoryRepository:
             "include_code_artifacts": 1 if include_code_artifacts else 0,
             "include_files": 1 if include_files else 0,
             "include_skills": 1 if include_skills else 0,
+            "include_plans": 1 if include_plans else 0,
+            "include_tasks": 1 if include_tasks else 0,
             "limit_plus_one": max_nodes + 1,  # +1 to detect truncation
         }
 

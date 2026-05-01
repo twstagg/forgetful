@@ -12,11 +12,11 @@ class SubgraphNode(BaseModel):
 
     id: str = Field(
         ...,
-        description="Prefixed node ID in format 'memory_123', 'entity_456', 'project_789', 'document_123', 'code_artifact_456', or 'file_789'",
+        description="Prefixed node ID in format 'memory_123', 'entity_456', 'project_789', 'document_123', 'code_artifact_456', 'file_789', 'skill_123', 'plan_456', or 'task_789'",
     )
-    type: Literal["memory", "entity", "project", "document", "code_artifact", "file", "skill"] = Field(
+    type: Literal["memory", "entity", "project", "document", "code_artifact", "file", "skill", "plan", "task"] = Field(
         ...,
-        description="Node type: 'memory', 'entity', 'project', 'document', 'code_artifact', or 'file'",
+        description="Node type: 'memory', 'entity', 'project', 'document', 'code_artifact', 'file', 'skill', 'plan', or 'task'",
     )
     depth: int = Field(
         ...,
@@ -66,6 +66,8 @@ class SubgraphEdge(BaseModel):
         "skill_file",
         "skill_code_artifact",
         "skill_document",
+        "plan_project",
+        "plan_task",
     ] = Field(
         ...,
         description="Edge type indicating relationship kind",
@@ -221,6 +223,26 @@ class SubgraphMeta(BaseModel):
         default=0,
         ge=0,
         description="Number of skill-to-document edges",
+    )
+    plan_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of plan nodes in result",
+    )
+    task_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of task nodes in result",
+    )
+    plan_project_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of plan-to-project edges",
+    )
+    plan_task_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of plan-to-task edges",
     )
     truncated: bool = Field(
         False,

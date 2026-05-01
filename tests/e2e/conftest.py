@@ -419,6 +419,13 @@ async def postgres_app(db_adapter, embedding_adapter, reranker_adapter, request)
 
         skill_service = SkillService(skill_repository, event_bus=event_bus)
 
+        # Plan/Task services (always enabled in E2E tests)
+        plan_service = None
+        task_service = None
+        if "plan" in repos and "task" in repos:
+            plan_service = PlanService(repos["plan"], event_bus=event_bus)
+            task_service = TaskService(repos["task"], plan_service=plan_service, event_bus=event_bus)
+
         graph_service = GraphService(
             repos["memory"],
             repos["entity"],
@@ -427,6 +434,8 @@ async def postgres_app(db_adapter, embedding_adapter, reranker_adapter, request)
             code_artifact_service=code_artifact_service,
             file_service=file_service,
             skill_service=skill_service,
+            plan_service=plan_service,
+            task_service=task_service,
         )
 
         mcp.user_service = user_service
@@ -444,13 +453,9 @@ async def postgres_app(db_adapter, embedding_adapter, reranker_adapter, request)
         if skill_service:
             mcp.skill_service = skill_service
 
-        # Plan/Task services (always enabled in E2E tests)
-        plan_service = None
-        task_service = None
-        if "plan" in repos and "task" in repos:
-            plan_service = PlanService(repos["plan"], event_bus=event_bus)
-            task_service = TaskService(repos["task"], plan_service=plan_service, event_bus=event_bus)
+        if plan_service:
             mcp.plan_service = plan_service
+        if task_service:
             mcp.task_service = task_service
 
         registry = ToolRegistry()

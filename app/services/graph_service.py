@@ -23,7 +23,7 @@ from app.protocols.memory_protocol import MemoryRepository
 logger = logging.getLogger(__name__)
 
 # Regex pattern for parsing node IDs
-NODE_ID_PATTERN = re.compile(r"^(memory|entity|project|document|code_artifact|file|skill)_(\d+)$")
+NODE_ID_PATTERN = re.compile(r"^(memory|entity|project|document|code_artifact|file|skill|plan|task)_(\d+)$")
 
 
 # Protocol for project service (to avoid circular imports)
@@ -55,6 +55,20 @@ class SkillServiceProtocol(Protocol):
     async def get_all_skill_document_links(self, user_id: UUID) -> list[tuple[int, int]]: ...
 
 
+# Protocol for plan service (to avoid circular imports)
+class PlanServiceProtocol(Protocol):
+    async def get_plan(self, user_id: UUID, plan_id: int) -> Any: ...
+    async def list_plans(self, user_id: UUID, **kwargs) -> Any: ...
+
+
+# Protocol for task service (to avoid circular imports)
+class TaskServiceProtocol(Protocol):
+    async def get_task(self, user_id: UUID, task_id: int) -> Any: ...
+    async def list_tasks_for_user(
+        self, user_id: UUID, plan_ids: list[int] | None = None,
+    ) -> Any: ...
+
+
 class GraphService:
     """Service layer for graph traversal operations.
 
@@ -72,18 +86,10 @@ class GraphService:
         code_artifact_service: CodeArtifactServiceProtocol | None = None,
         file_service: FileServiceProtocol | None = None,
         skill_service: SkillServiceProtocol | None = None,
+        plan_service: PlanServiceProtocol | None = None,
+        task_service: TaskServiceProtocol | None = None,
     ):
-        """Initialize with repository protocols and optional services.
-
-        Args:
-            memory_repo: Memory repository implementing the protocol
-            entity_repo: Entity repository implementing the protocol
-            project_service: Optional project service for fetching project data
-            document_service: Optional document service for fetching document data
-            code_artifact_service: Optional code artifact service for fetching artifact data
-            file_service: Optional file service for fetching file data
-            skill_service: Optional skill service for fetching skill data
-        """
+        """Initialize with repository protocols and optional services."""
         self.memory_repo = memory_repo
         self.entity_repo = entity_repo
         self.project_service = project_service
@@ -91,6 +97,8 @@ class GraphService:
         self.code_artifact_service = code_artifact_service
         self.file_service = file_service
         self.skill_service = skill_service
+        self.plan_service = plan_service
+        self.task_service = task_service
         logger.info("Graph service initialized")
 
     @staticmethod
@@ -112,7 +120,8 @@ class GraphService:
             raise ValueError(
                 f"Invalid node_id format: '{node_id}'. "
                 "Expected 'memory_{{id}}', 'entity_{{id}}', 'project_{{id}}', "
-                "'document_{{id}}', 'code_artifact_{{id}}', 'file_{{id}}', or 'skill_{{id}}'.",
+                "'document_{{id}}', 'code_artifact_{{id}}', 'file_{{id}}', 'skill_{{id}}', "
+                "'plan_{{id}}', or 'task_{{id}}'.",
             )
         return match.group(1), int(match.group(2))
 
@@ -157,7 +166,7 @@ class GraphService:
 
         # Determine which node types to include (default: all types)
         if node_types is None:
-            node_types = ["memory", "entity", "project", "document", "code_artifact", "file", "skill"]
+            node_types = ["memory", "entity", "project", "document", "code_artifact", "file", "skill", "plan", "task"]
         include_memories = "memory" in node_types
         include_entities = "entity" in node_types
         include_projects = "project" in node_types
@@ -165,6 +174,8 @@ class GraphService:
         include_code_artifacts = "code_artifact" in node_types
         include_files = "file" in node_types
         include_skills = "skill" in node_types
+        include_plans = "plan" in node_types
+        include_tasks = "task" in node_types
 
         logger.info(
             "Starting subgraph traversal",
@@ -190,6 +201,8 @@ class GraphService:
             include_code_artifacts=include_code_artifacts,
             include_files=include_files,
             include_skills=include_skills,
+            include_plans=include_plans,
+            include_tasks=include_tasks,
             max_nodes=max_nodes,
         )
 
@@ -201,6 +214,8 @@ class GraphService:
         code_artifact_ids = [n["node_id"] for n in raw_nodes if n["node_type"] == "code_artifact"]
         file_ids = [n["node_id"] for n in raw_nodes if n["node_type"] == "file"]
         skill_ids = [n["node_id"] for n in raw_nodes if n["node_type"] == "skill"]
+        plan_ids = [n["node_id"] for n in raw_nodes if n["node_type"] == "plan"]
+        task_ids = [n["node_id"] for n in raw_nodes if n["node_type"] == "task"]
 
         # Build depth lookup
         depth_lookup = {
@@ -208,14 +223,31 @@ class GraphService:
             for n in raw_nodes
         }
 
+        # Fetch tasks once (used by both _fetch_node_data and _fetch_edges)
+        # When subgraph contains tasks but no plans, fall back to plan_ids=None.
+        task_summaries: list = []
+        if task_ids and self.task_service:
+            try:
+                task_filter = plan_ids if plan_ids else None
+                task_summaries = await self.task_service.list_tasks_for_user(
+                    user_id=user_id, plan_ids=task_filter,
+                )
+            except Exception:
+                logger.warning("Failed to fetch task summaries for graph nodes")
+                task_summaries = []
+
         # Fetch full node data
         nodes = await self._fetch_node_data(
-            user_id, memory_ids, entity_ids, project_ids, document_ids, code_artifact_ids, file_ids, skill_ids, depth_lookup,
+            user_id, memory_ids, entity_ids, project_ids, document_ids, code_artifact_ids,
+            file_ids, skill_ids, depth_lookup,
+            plan_ids=plan_ids, task_ids=task_ids, task_summaries=task_summaries,
         )
 
         # Fetch edges between nodes in the subgraph
         edges = await self._fetch_edges(
-            user_id, memory_ids, entity_ids, project_ids, document_ids, code_artifact_ids, file_ids, skill_ids,
+            user_id, memory_ids, entity_ids, project_ids, document_ids, code_artifact_ids,
+            file_ids, skill_ids,
+            plan_ids=plan_ids, task_ids=task_ids, task_summaries=task_summaries,
         )
 
         # Build metadata
@@ -226,6 +258,8 @@ class GraphService:
         code_artifact_count = len([n for n in nodes if n.type == "code_artifact"])
         file_count = len([n for n in nodes if n.type == "file"])
         skill_count = len([n for n in nodes if n.type == "skill"])
+        plan_count = len([n for n in nodes if n.type == "plan"])
+        task_count = len([n for n in nodes if n.type == "task"])
         memory_link_count = len([e for e in edges if e.type == "memory_link"])
         entity_relationship_count = len([e for e in edges if e.type == "entity_relationship"])
         entity_memory_count = len([e for e in edges if e.type == "entity_memory"])
@@ -243,6 +277,8 @@ class GraphService:
         skill_file_count = len([e for e in edges if e.type == "skill_file"])
         skill_code_artifact_count = len([e for e in edges if e.type == "skill_code_artifact"])
         skill_document_count = len([e for e in edges if e.type == "skill_document"])
+        plan_project_count = len([e for e in edges if e.type == "plan_project"])
+        plan_task_count = len([e for e in edges if e.type == "plan_task"])
 
         meta = SubgraphMeta(
             center_node_id=center_node_id,
@@ -274,6 +310,10 @@ class GraphService:
             skill_file_count=skill_file_count,
             skill_code_artifact_count=skill_code_artifact_count,
             skill_document_count=skill_document_count,
+            plan_count=plan_count,
+            task_count=task_count,
+            plan_project_count=plan_project_count,
+            plan_task_count=plan_task_count,
             truncated=truncated,
         )
 
@@ -358,6 +398,24 @@ class GraphService:
             )
             if skill is None:
                 raise NotFoundError(f"Skill {center_id} not found")
+        elif center_type == "plan":
+            if self.plan_service is None:
+                raise NotFoundError("Plan service not available")
+            plan = await self.plan_service.get_plan(
+                user_id=user_id,
+                plan_id=center_id,
+            )
+            if plan is None:
+                raise NotFoundError(f"Plan {center_id} not found")
+        elif center_type == "task":
+            if self.task_service is None:
+                raise NotFoundError("Task service not available")
+            task = await self.task_service.get_task(
+                user_id=user_id,
+                task_id=center_id,
+            )
+            if task is None:
+                raise NotFoundError(f"Task {center_id} not found")
         else:
             raise ValueError(f"Unknown center_type: {center_type}")
 
@@ -372,6 +430,9 @@ class GraphService:
         file_ids: list[int],
         skill_ids: list[int],
         depth_lookup: dict,
+        plan_ids: list[int] | None = None,
+        task_ids: list[int] | None = None,
+        task_summaries: list | None = None,
     ) -> list[SubgraphNode]:
         """Fetch full data for all node types.
 
@@ -581,6 +642,62 @@ class GraphService:
                     logger.warning(f"Skill {skill_id} not found during fetch")
                     continue
 
+        # Fetch plans
+        if self.plan_service and plan_ids:
+            for plan_id in plan_ids:
+                try:
+                    plan = await self.plan_service.get_plan(
+                        user_id=user_id,
+                        plan_id=plan_id,
+                    )
+                    if plan is None:
+                        logger.warning(f"Plan {plan_id} not found during fetch")
+                        continue
+                    nodes.append(SubgraphNode(
+                        id=f"plan_{plan.id}",
+                        type="plan",
+                        depth=depth_lookup.get(("plan", plan_id), 0),
+                        label=plan.title,
+                        data={
+                            "id": plan.id,
+                            "title": plan.title,
+                            "status": plan.status.value if hasattr(plan.status, "value") else plan.status,
+                            "project_id": plan.project_id,
+                            "created_at": plan.created_at.isoformat() if plan.created_at else None,
+                        },
+                    ))
+                except NotFoundError:
+                    logger.warning(f"Plan {plan_id} not found during fetch")
+                    continue
+
+        # Fetch tasks (use pre-fetched task_summaries if provided to avoid re-fetching)
+        if task_ids:
+            task_id_set = set(task_ids)
+            task_map = {t.id: t for t in (task_summaries or []) if t.id in task_id_set}
+            for task_id in task_ids:
+                t = task_map.get(task_id)
+                if t is None:
+                    logger.warning(f"Task {task_id} not found during fetch")
+                    continue
+                nodes.append(SubgraphNode(
+                    id=f"task_{t.id}",
+                    type="task",
+                    depth=depth_lookup.get(("task", task_id), 0),
+                    label=t.title,
+                    data={
+                        "id": t.id,
+                        "title": t.title,
+                        "plan_id": t.plan_id,
+                        "state": t.state.value if hasattr(t.state, "value") else t.state,
+                        "priority": t.priority.value if hasattr(t.priority, "value") else t.priority,
+                        "assigned_agent": t.assigned_agent,
+                        "criteria_met": t.criteria_met,
+                        "criteria_total": t.criteria_total,
+                        "blocked": t.blocked,
+                        "created_at": t.created_at.isoformat() if t.created_at else None,
+                    },
+                ))
+
         return nodes
 
     async def _fetch_edges(
@@ -593,6 +710,9 @@ class GraphService:
         code_artifact_ids: list[int],
         file_ids: list[int] | None = None,
         skill_ids: list[int] | None = None,
+        plan_ids: list[int] | None = None,
+        task_ids: list[int] | None = None,
+        task_summaries: list | None = None,
     ) -> list[SubgraphEdge]:
         """Fetch all edges between nodes in the subgraph.
 
@@ -941,6 +1061,44 @@ class GraphService:
                             source=f"skill_{sid}",
                             target=f"document_{did}",
                             type="skill_document",
+                        ))
+
+        plan_id_set = set(plan_ids or [])
+        task_id_set = set(task_ids or [])
+
+        # Fetch plan-to-project edges
+        if self.plan_service and plan_ids and project_ids:
+            for pid in plan_ids:
+                try:
+                    plan = await self.plan_service.get_plan(
+                        user_id=user_id,
+                        plan_id=pid,
+                    )
+                    if plan and plan.project_id and plan.project_id in project_id_set:
+                        edge_id = f"plan_{pid}_project_{plan.project_id}"
+                        if edge_id not in seen_edge_ids:
+                            seen_edge_ids.add(edge_id)
+                            edges.append(SubgraphEdge(
+                                id=edge_id,
+                                source=f"plan_{pid}",
+                                target=f"project_{plan.project_id}",
+                                type="plan_project",
+                            ))
+                except NotFoundError:
+                    continue
+
+        # Fetch plan-to-task edges (using pre-fetched task_summaries)
+        if plan_ids and task_ids and task_summaries:
+            for t in task_summaries:
+                if t.id in task_id_set and t.plan_id in plan_id_set:
+                    edge_id = f"plan_{t.plan_id}_task_{t.id}"
+                    if edge_id not in seen_edge_ids:
+                        seen_edge_ids.add(edge_id)
+                        edges.append(SubgraphEdge(
+                            id=edge_id,
+                            source=f"plan_{t.plan_id}",
+                            target=f"task_{t.id}",
+                            type="plan_task",
                         ))
 
         return edges

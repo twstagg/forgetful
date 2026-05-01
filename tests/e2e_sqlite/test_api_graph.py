@@ -2547,3 +2547,347 @@ class TestGraphMetaShape:
 
         missing = self.EXPECTED_NEW_KEYS - set(meta.keys())
         assert not missing, f"Missing meta keys in subgraph: {missing}"
+
+
+# Helper to create a project + plan + tasks chain via the public API
+async def _make_project_plan_tasks(http_client, project_name="P", task_titles=("Task A",)):
+    project_resp = await http_client.post("/api/v1/projects", json={
+        "name": project_name,
+        "description": "P for plan/task graph test",
+        "project_type": "development",
+    })
+    assert project_resp.status_code in (200, 201)
+    project_id = project_resp.json()["id"]
+
+    plan_resp = await http_client.post("/api/v1/plans", json={
+        "title": f"{project_name} Plan",
+        "project_id": project_id,
+        "goal": "Goal",
+    })
+    assert plan_resp.status_code in (200, 201), plan_resp.text
+    plan_id = plan_resp.json()["id"]
+
+    task_ids = []
+    for title in task_titles:
+        task_resp = await http_client.post("/api/v1/tasks", json={
+            "title": title, "plan_id": plan_id,
+        })
+        assert task_resp.status_code in (200, 201), task_resp.text
+        task_ids.append(task_resp.json()["id"])
+    return project_id, plan_id, task_ids
+
+
+class TestGraphPlanAndTaskNodes:
+    """Plan and task nodes appear in /api/v1/graph with correct shape and edges."""
+
+    @pytest.mark.asyncio
+    async def test_graph_includes_plan_nodes(self, http_client):
+        _, plan_id, _ = await _make_project_plan_tasks(http_client, "PlanGraphTest")
+        response = await http_client.get("/api/v1/graph?node_types=memory,plan")
+        assert response.status_code == 200
+        data = response.json()
+
+        plan_nodes = [n for n in data["nodes"] if n["type"] == "plan"]
+        assert any(n["data"]["id"] == plan_id for n in plan_nodes)
+        node = next(n for n in plan_nodes if n["data"]["id"] == plan_id)
+        assert node["id"] == f"plan_{plan_id}"
+        assert "title" in node["data"]
+        assert "status" in node["data"]
+        assert "project_id" in node["data"]
+        assert data["meta"]["plan_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_includes_task_nodes(self, http_client):
+        _, _, task_ids = await _make_project_plan_tasks(
+            http_client, "TaskGraphTest", task_titles=("Task 1", "Task 2"),
+        )
+        response = await http_client.get("/api/v1/graph?node_types=memory,task")
+        assert response.status_code == 200
+        data = response.json()
+
+        task_nodes = [n for n in data["nodes"] if n["type"] == "task"]
+        for tid in task_ids:
+            assert any(n["data"]["id"] == tid for n in task_nodes)
+        node = next(n for n in task_nodes if n["data"]["id"] == task_ids[0])
+        assert node["id"] == f"task_{task_ids[0]}"
+        assert "plan_id" in node["data"]
+        assert "state" in node["data"]
+        assert "priority" in node["data"]
+        assert data["meta"]["task_count"] >= 2
+
+    @pytest.mark.asyncio
+    async def test_graph_plan_project_edge(self, http_client):
+        project_id, plan_id, _ = await _make_project_plan_tasks(http_client, "PPEdge")
+        response = await http_client.get("/api/v1/graph?node_types=plan,project")
+        assert response.status_code == 200
+        data = response.json()
+
+        plan_project_edges = [
+            e for e in data["edges"]
+            if e["type"] == "plan_project"
+            and e["source"] == f"plan_{plan_id}"
+            and e["target"] == f"project_{project_id}"
+        ]
+        assert len(plan_project_edges) == 1
+        assert data["meta"]["plan_project_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_plan_task_edge(self, http_client):
+        _, plan_id, task_ids = await _make_project_plan_tasks(
+            http_client, "PTEdge", task_titles=("OnlyTask",),
+        )
+        response = await http_client.get("/api/v1/graph?node_types=plan,task")
+        assert response.status_code == 200
+        data = response.json()
+
+        plan_task_edges = [
+            e for e in data["edges"]
+            if e["type"] == "plan_task"
+            and e["source"] == f"plan_{plan_id}"
+            and e["target"] == f"task_{task_ids[0]}"
+        ]
+        assert len(plan_task_edges) == 1
+        assert data["meta"]["plan_task_count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_graph_default_includes_plans_and_tasks(self, http_client):
+        await _make_project_plan_tasks(http_client, "DefaultIncludes")
+        response = await http_client.get("/api/v1/graph")
+        assert response.status_code == 200
+        data = response.json()
+        types = {n["type"] for n in data["nodes"]}
+        assert "plan" in types
+        assert "task" in types
+
+    @pytest.mark.asyncio
+    async def test_graph_combined_all_types(self, http_client):
+        await _make_project_plan_tasks(http_client, "CombinedAll")
+        response = await http_client.get(
+            "/api/v1/graph?node_types=memory,project,plan,task,skill,file",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Smoke: meta keys present
+        for k in ["plan_count", "task_count", "plan_project_count", "plan_task_count"]:
+            assert k in data["meta"]
+
+
+class TestGraphPlanTaskEdgeCases:
+    """Edge cases for plan/task graph nodes."""
+
+    @pytest.mark.asyncio
+    async def test_no_plans_or_tasks(self, http_client):
+        response = await http_client.get("/api/v1/graph?node_types=plan,task")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["meta"]["plan_count"] == 0
+        assert data["meta"]["task_count"] == 0
+        assert all(n["type"] not in ("plan", "task") for n in data["nodes"])
+
+    @pytest.mark.asyncio
+    async def test_plan_with_no_tasks_emits_no_plan_task_edges(self, http_client):
+        _, plan_id, _ = await _make_project_plan_tasks(http_client, "NoTasks", task_titles=())
+        response = await http_client.get("/api/v1/graph?node_types=plan,task")
+        assert response.status_code == 200
+        data = response.json()
+
+        plan_task_edges = [e for e in data["edges"] if e["type"] == "plan_task" and e["source"] == f"plan_{plan_id}"]
+        assert len(plan_task_edges) == 0
+
+    @pytest.mark.asyncio
+    async def test_task_only_no_plan_task_edge(self, http_client):
+        """node_types=task only: tasks emitted, but no plan_task edges."""
+        _, _, task_ids = await _make_project_plan_tasks(
+            http_client, "TaskOnly", task_titles=("T1",),
+        )
+        response = await http_client.get("/api/v1/graph?node_types=task")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert any(n["data"]["id"] == task_ids[0] for n in data["nodes"] if n["type"] == "task")
+        assert all(e["type"] != "plan_task" for e in data["edges"])
+
+
+class TestGraphPlanTaskFeatureFlag:
+    """Feature-flag (PLANNING_ENABLED) gating for plan/task node types."""
+
+    @pytest.mark.asyncio
+    async def test_plan_rejected_when_planning_disabled(self, graph_http_client_factory):
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"planning"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph?node_types=memory,plan")
+        assert response.status_code == 400
+        assert "PLANNING_ENABLED" in response.json()["error"]
+
+    @pytest.mark.asyncio
+    async def test_task_rejected_when_planning_disabled(self, graph_http_client_factory):
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"planning"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph?node_types=memory,task")
+        assert response.status_code == 400
+        assert "PLANNING_ENABLED" in response.json()["error"]
+
+    @pytest.mark.asyncio
+    async def test_plan_and_task_dedup_one_flag_listed(self, graph_http_client_factory):
+        """Requesting plan,task while disabled: PLANNING_ENABLED listed once."""
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"planning"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph?node_types=plan,task")
+        assert response.status_code == 400
+        msg = response.json()["error"]
+        assert msg.count("PLANNING_ENABLED") == 1
+
+    @pytest.mark.asyncio
+    async def test_plan_disabled_skill_enabled_only_plan_cited(self, graph_http_client_factory):
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"planning"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph?node_types=plan,skill")
+        assert response.status_code == 400
+        msg = response.json()["error"]
+        assert "PLANNING_ENABLED" in msg
+        assert "SKILLS_ENABLED" not in msg
+
+    @pytest.mark.asyncio
+    async def test_default_request_omits_plan_task_when_disabled(self, graph_http_client_factory):
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"planning"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        response = await http.get("/api/v1/graph")
+        assert response.status_code == 200
+        types = {n["type"] for n in response.json()["nodes"]}
+        assert "plan" not in types
+        assert "task" not in types
+
+    @pytest.mark.asyncio
+    async def test_subgraph_rejects_plan_when_disabled(self, graph_http_client_factory):
+        all_features = set(FEATURE_FLAGS.keys())
+        enabled = all_features - {"planning"}
+        http, _app = await graph_http_client_factory(enabled)
+
+        mem_resp = await http.post("/api/v1/memories", json={
+            "title": "Center", "content": "C",
+            "context": "Test", "keywords": ["c"], "tags": ["t"], "importance": 7,
+        })
+        memory_id = mem_resp.json()["id"]
+
+        response = await http.get(
+            f"/api/v1/graph/subgraph?node_id=memory_{memory_id}&node_types=memory,plan",
+        )
+        assert response.status_code == 400
+        assert "PLANNING_ENABLED" in response.json()["error"]
+
+
+class TestSubgraphPlanTaskCTE:
+    """SQLite CTE traversal across plan/task branches."""
+
+    @pytest.mark.asyncio
+    async def test_subgraph_from_plan_to_project_and_tasks(self, http_client):
+        project_id, plan_id, task_ids = await _make_project_plan_tasks(
+            http_client, "PlanCenter", task_titles=("CTE Task 1", "CTE Task 2"),
+        )
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=plan_{plan_id}&depth=1"
+            "&node_types=plan,project,task",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        node_ids = {n["id"] for n in data["nodes"]}
+        assert f"plan_{plan_id}" in node_ids
+        assert f"project_{project_id}" in node_ids
+        for tid in task_ids:
+            assert f"task_{tid}" in node_ids
+
+    @pytest.mark.asyncio
+    async def test_subgraph_from_task_to_plan(self, http_client):
+        _, plan_id, task_ids = await _make_project_plan_tasks(
+            http_client, "TaskCenter", task_titles=("OneTask",),
+        )
+        task_id = task_ids[0]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=task_{task_id}&depth=1"
+            "&node_types=task,plan",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        node_ids = {n["id"] for n in data["nodes"]}
+        assert f"task_{task_id}" in node_ids
+        assert f"plan_{plan_id}" in node_ids
+
+    @pytest.mark.asyncio
+    async def test_subgraph_from_task_depth2_reaches_project(self, http_client):
+        project_id, plan_id, task_ids = await _make_project_plan_tasks(
+            http_client, "TaskMultiHop", task_titles=("MHop",),
+        )
+        task_id = task_ids[0]
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=task_{task_id}&depth=2"
+            "&node_types=task,plan,project",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        node_ids = {n["id"] for n in data["nodes"]}
+        assert f"plan_{plan_id}" in node_ids
+        assert f"project_{project_id}" in node_ids
+
+    @pytest.mark.asyncio
+    async def test_subgraph_from_project_to_plans(self, http_client):
+        project_id, plan_id, _ = await _make_project_plan_tasks(http_client, "ProjectToPlan")
+
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=project_{project_id}&depth=1"
+            "&node_types=project,plan",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        node_ids = {n["id"] for n in data["nodes"]}
+        assert f"plan_{plan_id}" in node_ids
+
+    @pytest.mark.asyncio
+    async def test_subgraph_plan_excludes_tasks_when_filtered(self, http_client):
+        _, plan_id, task_ids = await _make_project_plan_tasks(
+            http_client, "PlanFilter", task_titles=("FilteredTask",),
+        )
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=plan_{plan_id}&depth=1"
+            "&node_types=plan,project",
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert all(n["type"] != "task" for n in data["nodes"])
+
+    @pytest.mark.asyncio
+    async def test_subgraph_nonexistent_plan_returns_404(self, http_client):
+        response = await http_client.get(
+            "/api/v1/graph/subgraph?node_id=plan_999999",
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_subgraph_nonexistent_task_returns_404(self, http_client):
+        response = await http_client.get(
+            "/api/v1/graph/subgraph?node_id=task_999999",
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_subgraph_meta_includes_plan_task_counts(self, http_client):
+        _, plan_id, _ = await _make_project_plan_tasks(http_client, "MetaCounts")
+        response = await http_client.get(
+            f"/api/v1/graph/subgraph?node_id=plan_{plan_id}&depth=1",
+        )
+        assert response.status_code == 200
+        meta = response.json()["meta"]
+        for k in ["plan_count", "task_count", "plan_project_count", "plan_task_count"]:
+            assert k in meta
