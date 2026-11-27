@@ -45,6 +45,48 @@ uv sync --locked --all-extras --dev
 Run the remaining commands from the repository root. Use `uv run` to run commands in the
 project's Python environment without activating it manually.
 
+### NixOS
+
+Three things about this repository are worth knowing before you blame your checkout.
+
+**Run the documented commands inside the flake development shell.** `nix develop` provides a
+Python environment built from `uv.lock`, including the `dev` dependency group that carries
+`import-linter` and `grimp`, so the architecture contracts run there:
+
+```bash
+nix develop
+uv run pytest tests/architecture/
+```
+
+**A standalone virtual environment needs `libstdc++` on the loader path.** The failure looks
+alarming and is not about this project:
+
+```
+ImportError: libstdc++.so.6: cannot open shared object file: No such file or directory
+# surfaced later as:
+ValueError: the greenlet library is required to use this function. libstdc++.so.6: cannot open ...
+```
+
+The cause is that prebuilt manylinux wheels such as `greenlet` and `protobuf`'s `_upb` link
+against `libstdc++` and expect to find it in a conventional loader path. NixOS does not populate
+`/usr/lib`, so the library is not there, and only those two dependencies are affected. Inside the
+development shell this does not arise, because the shell's own build of the dependency set takes
+precedence over the project's `.venv`.
+
+If you want a standalone environment to work outside the shell, point the loader at the C++
+runtime for that command:
+
+```bash
+export LD_LIBRARY_PATH="$(nix eval --raw nixpkgs#stdenv.cc.cc.lib)/lib"
+.venv/bin/python -m pytest tests/integration/
+```
+
+This is a property of NixOS and prebuilt wheels, not of this repository, so it is documented rather
+than worked around in the build.
+
+The PostgreSQL end-to-end tier needs `pg_dump` and `psql`. The development shell provides them; the
+suite skips those tests when they are missing locally and fails in CI, where they must run.
+
 ## Architecture
 
 Before changing code, read the [architecture overview](architecture.md).
