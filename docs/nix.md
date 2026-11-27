@@ -135,6 +135,10 @@ and architecture tooling does not belong in either.
 nix develop -c pytest tests/architecture/ -q
 ```
 
+The shell also installs `postgresql_16`, which is where the PostgreSQL tier's
+`pg_dump` and `psql` come from. Without it those tests pass or fail according to
+what the user's profile happens to contain.
+
 ## Non-flake entry points
 
 `default.nix` and `shell.nix` exist for tooling without native flake support.

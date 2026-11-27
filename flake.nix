@@ -278,6 +278,7 @@
               # pg_dump/psql drive the PostgreSQL backup and restore tests. The
               # shell must provide them: relying on a user profile made those
               # tests pass or fail depending on whose machine ran them.
+              pkgs.postgresql_16 # psql and pg_dump for the backup tests
             ]
             ++ config.pre-commit.settings.enabledPackages;
             shellHook = ''
