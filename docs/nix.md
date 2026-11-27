@@ -125,6 +125,16 @@ iterating:
 nix develop -c pytest tests/integration/ -q
 ```
 
+`tests/architecture` runs there too. It needs `import-linter` and `grimp`, which
+live in the `dev` dependency group, so the shell builds `forgetful-dev-env` from
+`deps.default` with the `dev` group added rather than widening the runtime
+environment. The runtime env feeds `packages.forgetful-ai` and the container,
+and architecture tooling does not belong in either.
+
+```bash
+nix develop -c pytest tests/architecture/ -q
+```
+
 ## Non-flake entry points
 
 `default.nix` and `shell.nix` exist for tooling without native flake support.
