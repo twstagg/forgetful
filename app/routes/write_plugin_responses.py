@@ -6,6 +6,7 @@ from app.models.code_artifact_models import CodeArtifact
 from app.models.entity_models import Entity, EntityRelationship
 from app.models.file_models import File
 from app.models.memory_models import Memory, MemoryCreateResponse
+from app.models.skill_models import Skill
 from app.models.write_plugin_models import MemoryLinkOutcome, PluginWarning
 
 
@@ -50,5 +51,14 @@ class CodeArtifactWriteResponse(CodeArtifact):
 
 
 class CodeArtifactDeleteResponse(BaseModel):
+    success: bool
+    plugin_warnings: list[PluginWarning] = Field(default_factory=list, exclude_if=lambda v: not v)
+
+
+class SkillWriteResponse(Skill):
+    plugin_warnings: list[PluginWarning] = Field(default_factory=list, exclude_if=lambda v: not v)
+
+
+class SkillDeleteResponse(BaseModel):
     success: bool
     plugin_warnings: list[PluginWarning] = Field(default_factory=list, exclude_if=lambda v: not v)

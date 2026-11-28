@@ -20,6 +20,7 @@ from app.models.entity_models import (
 )
 from app.models.file_models import File, FileCreate, FileUpdate
 from app.models.memory_models import Memory, MemoryCreate, MemorySummary, MemoryUpdate
+from app.models.skill_models import Skill, SkillCreate, SkillUpdate
 
 MemoryOperation = Literal["create", "update", "obsolete", "restore"]
 
@@ -335,5 +336,46 @@ class CodeArtifactWriteResult(BaseModel):
 
 
 class CodeArtifactDeleteResult(BaseModel):
+    deleted: bool
+    plugin_warnings: list[PluginWarning] = Field(default_factory=list)
+
+
+SkillOperation = Literal["create", "update", "delete"]
+
+
+class SkillDeleteSubmission(BaseModel):
+    skill_id: int
+
+
+class SkillWriteRequest(BaseModel):
+    """Detached domain snapshots; operation distinguishes create, update, and delete."""
+
+    operation: SkillOperation
+    user_id: UUID
+    submitted: SkillCreate | SkillUpdate | SkillDeleteSubmission
+    previous: Skill | None
+    proposed: SkillCreate | None
+
+
+class SkillSavedRequest(BaseModel):
+    operation: Literal["create", "update"]
+    user_id: UUID
+    saved: Skill
+    previous: Skill | None
+
+
+class SkillDeletedRequest(BaseModel):
+    operation: Literal["delete"] = "delete"
+    user_id: UUID
+    deleted_skill_id: int
+    previous: Skill
+
+
+class SkillWriteResult(BaseModel):
+    skill: Skill
+    plugin_warnings: list[PluginWarning] = Field(default_factory=list)
+
+
+class SkillDeleteResult(BaseModel):
     deleted: bool
     plugin_warnings: list[PluginWarning] = Field(default_factory=list)

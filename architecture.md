@@ -36,12 +36,15 @@ flowchart TD
     FilePlugin --> FileCallable["FilePlugin: create, update, delete mappings"]
     Services --> CodeArtifactPlugin["CodeArtifactWritePluginService: before_save and advisory after_save"]
     CodeArtifactPlugin --> CodeArtifactCallable["CodeArtifactPlugin: create, update, delete mappings"]
+    Services --> SkillPlugin["SkillWritePluginService: before_save and advisory after_save"]
+    SkillPlugin --> SkillCallable["SkillPlugin: create, update, delete mappings"]
     Bootstrap --> Loader["config.write_plugin: trusted module:object loaders"]
     Loader -. supplies registration .-> WritePlugin
     Loader -. supplies registration .-> EntityWritePlugin
     Loader -. supplies registration .-> RelationshipPlugin
     Loader -. supplies registration .-> FilePlugin
     Loader -. supplies registration .-> CodeArtifactPlugin
+    Loader -. supplies registration .-> SkillPlugin
     SQLite["SQLite repositories"] -. implements .-> Contracts
     Postgres["PostgreSQL repositories"] -. implements .-> Contracts
     SQLite --> SQLiteDB["SQLite adapter and sqlite-vec"]
@@ -212,6 +215,14 @@ full artifact as it will be after the write, not only the changed fields. Deleti
 cascades at the database to `memory_code_artifact_association` and
 `skill_code_artifact_association`, and sets `skill_bundle_resources.code_artifact_id` to NULL,
 without separate plugin hooks.
+**Skill Plugin:** mirrors the Memory Plugin contract for skill create, update, and delete via
+`load_skill_plugin`, `SkillPlugin`, and `SkillWritePluginService`, wired only when
+`SKILLS_ENABLED` builds the service. Handlers see detached snapshots, and the update request carries
+the full skill as it will be after the write. `import_skill` delegates to `create_skill` and so runs
+the plugin, while `import_skill_bundle` writes the skill and its resource records in one transaction
+and does not fire a phase. Deleting a skill cascades its association rows and its
+`skill_bundle_resources` rows, but leaves the documents, files and code artifacts those resources
+referenced in place.
 
 **Memory Plugin:** `app/config/write_plugin.py` loads one trusted `module:object` registration before
 costly resources. `MemoryPlugin` in `app/protocols/write_plugin_protocol.py` owns copied, frozen
