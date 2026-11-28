@@ -236,6 +236,7 @@ async def build_runtime() -> Runtime:
         load_file_plugin,
         load_memory_link_plugin,
         load_skill_plugin,
+        load_task_plugin,
         load_write_plugin,
     )
     from app.services.code_artifact_write_plugin_service import (
@@ -249,6 +250,7 @@ async def build_runtime() -> Runtime:
     from app.services.memory_link_service import MemoryLinkService
     from app.services.plan_write_plugin_service import PlanWritePluginService
     from app.services.skill_write_plugin_service import SkillWritePluginService
+    from app.services.task_write_plugin_service import TaskWritePluginService
     from app.services.write_plugin_service import WritePluginService
 
     link_registration = load_memory_link_plugin(settings)
@@ -259,6 +261,7 @@ async def build_runtime() -> Runtime:
     code_artifact_registration = load_code_artifact_plugin(settings)
     skill_registration = load_skill_plugin(settings)
     plan_registration = load_plan_plugin(settings)
+    task_registration = load_task_plugin(settings)
     plugin_logger_states = {}
     for registration, reference in (
         (plugin, settings.MEMORY_WRITE_PLUGIN),
@@ -268,6 +271,7 @@ async def build_runtime() -> Runtime:
         (code_artifact_registration, settings.CODE_ARTIFACT_WRITE_PLUGIN),
         (skill_registration, settings.SKILL_WRITE_PLUGIN),
         (plan_registration, settings.PLAN_WRITE_PLUGIN),
+        (task_registration, settings.TASK_WRITE_PLUGIN),
     ):
         if registration is None:
             continue
@@ -315,6 +319,11 @@ async def build_runtime() -> Runtime:
         timeout_seconds=settings.PLAN_WRITE_PLUGIN_TIMEOUT_SECONDS,
     ) if plan_registration is not None else None)
 
+    task_write_plugin = (TaskWritePluginService(
+        task_registration, mode=settings.TASK_WRITE_PLUGIN_MODE,
+        timeout_seconds=settings.TASK_WRITE_PLUGIN_TIMEOUT_SECONDS,
+    ) if task_registration is not None else None)
+
     check_first_run_models()
 
     embeddings_adapter = get_embedding_adapter()
@@ -338,6 +347,7 @@ async def build_runtime() -> Runtime:
         logging.getLogger("app.services.file_write_plugin_service").disabled = False
         logging.getLogger("app.services.code_artifact_write_plugin_service").disabled = False
         logging.getLogger("app.services.skill_write_plugin_service").disabled = False
+        logging.getLogger("app.services.task_write_plugin_service").disabled = False
         logging.getLogger("app.services.memory_link_service").disabled = False
         # The UI mount warns when it is enabled without a bundle; that warning is
         # the only signal an operator gets, so keep it from being silenced here.
@@ -431,7 +441,10 @@ async def build_runtime() -> Runtime:
                 repos["plan"], event_bus=event_bus, plan_plugin=plan_plugin,
                 project_repo=repos["project"],
             )
-            task_service = TaskService(repos["task"], plan_service=plan_service, event_bus=event_bus)
+            task_service = TaskService(
+                repos["task"], plan_service=plan_service, event_bus=event_bus,
+                write_plugin=task_write_plugin,
+            )
             logger.info("Planning feature enabled")
         else:
             logger.info("Planning feature disabled (PLANNING_ENABLED=false)")

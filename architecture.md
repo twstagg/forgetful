@@ -38,6 +38,8 @@ flowchart TD
     CodeArtifactPlugin --> CodeArtifactCallable["CodeArtifactPlugin: create, update, delete mappings"]
     Services --> SkillPlugin["SkillWritePluginService: before_save and advisory after_save"]
     SkillPlugin --> SkillCallable["SkillPlugin: create, update, delete mappings"]
+    Services --> TaskPlugin["TaskWritePluginService: before_save and advisory after_save"]
+    TaskPlugin --> TaskCallable["TaskPlugin: create, update, delete mappings"]
     Bootstrap --> Loader["config.write_plugin: trusted module:object loaders"]
     Loader -. supplies registration .-> WritePlugin
     Loader -. supplies registration .-> EntityWritePlugin
@@ -45,6 +47,7 @@ flowchart TD
     Loader -. supplies registration .-> FilePlugin
     Loader -. supplies registration .-> CodeArtifactPlugin
     Loader -. supplies registration .-> SkillPlugin
+    Loader -. supplies registration .-> TaskPlugin
     SQLite["SQLite repositories"] -. implements .-> Contracts
     Postgres["PostgreSQL repositories"] -. implements .-> Contracts
     SQLite --> SQLiteDB["SQLite adapter and sqlite-vec"]
@@ -223,6 +226,14 @@ the plugin, while `import_skill_bundle` writes the skill and its resource record
 and does not fire a phase. Deleting a skill cascades its association rows and its
 `skill_bundle_resources` rows, but leaves the documents, files and code artifacts those resources
 referenced in place.
+**Task Plugin:** mirrors the Memory Plugin contract for task create, metadata update, state
+transition, claim and delete via `load_task_plugin`, `TaskPlugin`, and `TaskWritePluginService`,
+wired only when `PLANNING_ENABLED` builds the service. A transition and a claim fire as an update
+whose `proposed` is the full post-write `Task`, because `TaskCreate` has no state field. Version
+checks and state-machine validation run before any handler, so a plugin can veto a transition but
+cannot alter the rules. Dependency and criterion edits do not fire; deleting a task cascades its
+criteria and its dependency rows in both directions, silently unblocking tasks that depended on it,
+and deleting a plan cascades its tasks without a task hook.
 
 **Memory Plugin:** `app/config/write_plugin.py` loads one trusted `module:object` registration before
 costly resources. `MemoryPlugin` in `app/protocols/write_plugin_protocol.py` owns copied, frozen
