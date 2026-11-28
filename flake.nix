@@ -40,6 +40,15 @@
       };
     };
 
+    # The web UI this server can host. Pinned by revision in flake.lock, which
+    # is content-addressed, so the bundle built from it is reproducible and does
+    # not depend on any branch moving. The same locked revision feeds the
+    # container's Node stage, so every path builds one commit of one project.
+    forgetful-ui = {
+      url = "github:ScottRBK/forgetful-ui/ed768b46ae52317f13cb4145c5e495333559aaaa";
+      flake = false;
+    };
+
     git-hooks-nix = {
       url = "github:cachix/git-hooks.nix";
       inputs = {
@@ -131,6 +140,37 @@
           # 5. Runtime env from the lock (default groups)
           forgetfulEnv = pythonSet.mkVirtualEnv "forgetful-env" workspace.deps.default;
 
+          # 5b. Web UI bundle
+          #
+          # Built here from the pinned input, so a Nix install has a real bundle
+          # and never depends on a gitignored dist/ in the source tree. This is
+          # the only reason the UI repository is a flake input rather than a
+          # submodule: a submodule is invisible to flake source fetching, so the
+          # bundle would simply be absent here.
+          #
+          # Node is a build-time dependency only. The output is static files.
+          uiBundle = pkgs.buildNpmPackage {
+            pname = "forgetful-ui";
+            version = "0.1.0";
+            src = inputs.forgetful-ui;
+            nodejs = pkgs.nodejs_24;
+            npmDepsHash = "sha256-53/EYpciTm4ak91FQJUxQzFm8GGWT0AP7d2eP//jqM0=";
+            # Browser downloads and binary post-installs are not needed to build.
+            npmFlags = [ "--ignore-scripts" ];
+            buildPhase = ''
+              runHook preBuild
+              npm run build
+              runHook postBuild
+            '';
+            installPhase = ''
+              mkdir -p $out
+              cp -r dist/. $out/
+            '';
+            meta = {
+              description = "Built static bundle of the Forgetful web UI";
+            };
+          };
+
           # 6. App package: stdenv + makeWrapper around the runtime env
           #
           # Limit the wrapper's source to the files copied by installPhase.
@@ -160,6 +200,11 @@
             installPhase = ''
               mkdir -p $out/bin $out/lib
               cp -r app main.py alembic.ini alembic $out/lib/
+              # Package data, so UI_ENABLED=true needs no UI_DIST_DIR and no dist/.
+              # This path is inside the store, which is what makes the default
+              # bundle location a store path rather than a build-time accident.
+              mkdir -p $out/lib/app/web
+              cp -r ${uiBundle} $out/lib/app/web/ui
               makeWrapper ${forgetfulEnv}/bin/forgetful $out/bin/forgetful-ai \
                 --prefix PYTHONPATH : "$out/lib"
               ln -s $out/bin/forgetful-ai $out/bin/forgetful
@@ -189,6 +234,9 @@
               # sys.path. Listed as a file, not a directory, so the 428K
               # synthetic corpus stays out of the test source.
               ./benchmarks/retrieval/eval_lib.py
+              # Imported by the packaging tests; lives at the root because the
+              # build hook loads it by path, outside the installed package.
+              ./ui_bundle.py
             ];
           };
 
@@ -276,6 +324,9 @@
           # docker-compose default (`forgetful:latest`); pname stays forgetful-ai.
           packages = {
             forgetful-ai = appPkg;
+            # The built bundle on its own, so a reviewer can inspect exactly what
+            # the package ships without unpacking it.
+            ui-bundle = uiBundle;
             default = appPkg;
             docker = pkgs.dockerTools.buildLayeredImage {
               name = "forgetful";

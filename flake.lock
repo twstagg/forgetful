@@ -36,6 +36,23 @@
         "type": "github"
       }
     },
+    "forgetful-ui": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1795633230,
+        "narHash": "sha256-Zzf+R1hCt0t0l8jZwesUzSdPoQWTzczW28/tuPW8vHI=",
+        "owner": "ScottRBK",
+        "repo": "forgetful-ui",
+        "rev": "ed768b46ae52317f13cb4145c5e495333559aaaa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ScottRBK",
+        "repo": "forgetful-ui",
+        "rev": "ed768b46ae52317f13cb4145c5e495333559aaaa",
+        "type": "github"
+      }
+    },
     "git-hooks-nix": {
       "inputs": {
         "flake-compat": [
@@ -125,6 +142,7 @@
       "inputs": {
         "flake-compat": "flake-compat",
         "flake-parts": "flake-parts",
+        "forgetful-ui": "forgetful-ui",
         "git-hooks-nix": "git-hooks-nix",
         "nixpkgs": "nixpkgs",
         "pyproject-build-systems": "pyproject-build-systems",
