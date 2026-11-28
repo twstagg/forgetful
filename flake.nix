@@ -41,12 +41,21 @@
     };
 
     # The web UI this server can host. Pinned by revision in flake.lock, which
-    # is content-addressed, so the bundle built from it is reproducible and does
-    # not depend on any branch moving. The same locked revision feeds the
+    # is content-addressed, so the bundle consumed from it is reproducible and
+    # does not depend on any branch moving. The same locked revision feeds the
     # container's Node stage, so every path builds one commit of one project.
+    #
+    # A flake, not a plain source tree: the UI project builds its own production
+    # bundle and asserts the shape of it, so this repository consumes that output
+    # instead of restating the recipe, the dependency hash and the version.
     forgetful-ui = {
-      url = "github:ScottRBK/forgetful-ui/ed768b46ae52317f13cb4145c5e495333559aaaa";
-      flake = false;
+      url = "github:twstagg/forgetful-ui/7428a5dc210009826f38aa854a034c392206aa25";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-parts.follows = "flake-parts";
+        git-hooks-nix.follows = "git-hooks-nix";
+        flake-compat.follows = "flake-compat";
+      };
     };
 
     git-hooks-nix = {
@@ -88,7 +97,12 @@
       imports = [ inputs.git-hooks-nix.flakeModule ];
 
       perSystem =
-        { config, pkgs, ... }:
+        {
+          config,
+          pkgs,
+          system,
+          ...
+        }:
         let
           inherit (pkgs) lib;
           python = pkgs.python312;
@@ -158,34 +172,17 @@
 
           # 5b. Web UI bundle
           #
-          # Built here from the pinned input, so a Nix install has a real bundle
-          # and never depends on a gitignored dist/ in the source tree. This is
-          # the only reason the UI repository is a flake input rather than a
-          # submodule: a submodule is invisible to flake source fetching, so the
-          # bundle would simply be absent here.
+          # Taken from the UI project's own flake rather than rebuilt here, so a
+          # Nix install ships a real bundle without this repository restating
+          # that project's build recipe, dependency hash or version. The UI
+          # project also checks the produced bundle's shape, which this side
+          # cannot assert about a tree it does not own.
           #
-          # Node is a build-time dependency only. The output is static files.
-          uiBundle = pkgs.buildNpmPackage {
-            pname = "forgetful-ui";
-            version = "0.1.0";
-            src = inputs.forgetful-ui;
-            nodejs = pkgs.nodejs_24;
-            npmDepsHash = "sha256-53/EYpciTm4ak91FQJUxQzFm8GGWT0AP7d2eP//jqM0=";
-            # Browser downloads and binary post-installs are not needed to build.
-            npmFlags = [ "--ignore-scripts" ];
-            buildPhase = ''
-              runHook preBuild
-              npm run build
-              runHook postBuild
-            '';
-            installPhase = ''
-              mkdir -p $out
-              cp -r dist/. $out/
-            '';
-            meta = {
-              description = "Built static bundle of the Forgetful web UI";
-            };
-          };
+          # It publishes x86_64-linux only. Evaluating another architecture
+          # fails here with that reason rather than a missing attribute.
+          uiBundle =
+            inputs.forgetful-ui.packages.${system}.default
+              or (throw "forgetful-ui publishes no bundle for ${system}; add it to the UI flake's systems first");
 
           # 6. App package: stdenv + makeWrapper around the runtime env
           #

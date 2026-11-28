@@ -216,13 +216,21 @@ Recorded so nobody re-derives them.
 
 The server can host the built UI, and a Nix install must ship a real bundle: the
 bundle is a gitignored build output, so a clean source tree has none and
-`UI_ENABLED=true` would serve nothing. `packages.ui-bundle` builds it from the
-`forgetful-ui` flake input with `buildNpmPackage`, and `forgetful-ai` installs
-the result at `lib/app/web/ui` inside the store. Node is a build-time
-dependency only.
+`UI_ENABLED=true` would serve nothing. The `forgetful-ui` flake input is consumed
+as a flake, and `packages.ui-bundle` re-exposes that project's own `default`
+package, which `forgetful-ai` installs at `lib/app/web/ui` inside the store. Node
+is a build-time dependency of the UI project, not of this one.
+
+Building it here was a second copy of the same recipe: its own dependency hash,
+its own version string, and nothing asserting that the directory it produced had
+an `index.html` and the chunk that index references. The UI project builds that
+bundle and checks its shape with `bundleCheck`, so consuming the output drops the
+hash, the version and the drift between the two.
 
 The input is pinned by revision and carries a `narHash` in `flake.lock`, so the
-bundle is reproducible and content-addressed.
+bundle is reproducible and content-addressed. The UI flake lists `x86_64-linux`
+as its only system, so evaluating the bundle for another architecture fails here
+with that message instead of a missing-attribute error.
 
 **Why not a git submodule.** A submodule would also pin a commit, and for
 `docker build` and a plain checkout it is the more obvious tool. It fails the
