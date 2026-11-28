@@ -1229,7 +1229,11 @@ def register_code_artifact_tools_metadata(
                 {"name": "agent_version", "type": "Optional[str]", "description": "Agent version for provenance tracking", "required": False, "default": None, "example": "1.0"},
                 {"name": "agent_model", "type": "Optional[str]", "description": "LLM model used for provenance tracking", "required": False, "default": None, "example": "claude-sonnet-4-6"},
             ],
-            "returns": "CodeArtifact with id and timestamps",
+            "returns": (
+                "Flat CodeArtifact object after create, with plugin_warnings only when "
+                "nonempty. After-save warnings are advisory. Before-save errors: "
+                "WRITE_PLUGIN_REJECTED (correct the stated issue) or WRITE_PLUGIN_UNAVAILABLE."
+            ),
             "examples": [
                 'execute_forgetful_tool("create_code_artifact", {"title": "Helper function", "description": "Utility helper", "code": "def helper(): pass", "language": "python"})',
             ],
@@ -1287,7 +1291,12 @@ def register_code_artifact_tools_metadata(
                 {"name": "agent_version", "type": "Optional[str]", "description": "Agent version for provenance tracking", "required": False, "default": None, "example": "1.0"},
                 {"name": "agent_model", "type": "Optional[str]", "description": "LLM model used for provenance tracking", "required": False, "default": None, "example": "claude-sonnet-4-6"},
             ],
-            "returns": "Updated CodeArtifact object",
+            "returns": (
+                "Flat CodeArtifact object after update, with plugin_warnings only when "
+                "nonempty. After-save warnings preserve success. Before-save errors: "
+                "WRITE_PLUGIN_REJECTED or WRITE_PLUGIN_UNAVAILABLE. A no-op update skips "
+                "the plugin entirely."
+            ),
             "examples": [
                 'execute_forgetful_tool("update_code_artifact", {"artifact_id": 1, "tags": ["updated", "refactored"]})',
             ],

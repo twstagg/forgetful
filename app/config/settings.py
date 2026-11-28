@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     FILE_WRITE_PLUGIN: str = ""
     FILE_WRITE_PLUGIN_MODE: Literal["warn", "enforce"] = "enforce"
     FILE_WRITE_PLUGIN_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0, allow_inf_nan=False)
+    CODE_ARTIFACT_WRITE_PLUGIN: str = ""
+    CODE_ARTIFACT_WRITE_PLUGIN_MODE: Literal["warn", "enforce"] = "enforce"
+    CODE_ARTIFACT_WRITE_PLUGIN_TIMEOUT_SECONDS: float = Field(
+        default=5.0, gt=0, allow_inf_nan=False,
+    )
 
     # Database Configuration
     DATABASE: str = "SQLite"  # "Postgres" or "SQLite"

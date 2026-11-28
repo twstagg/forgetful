@@ -230,11 +230,15 @@ async def build_runtime() -> Runtime:
     """Build the full runtime stack: adapters -> repos -> services -> registry -> scopes."""
     from app.config.plan_plugin import load_plan_plugin
     from app.config.write_plugin import (
+        load_code_artifact_plugin,
         load_entity_plugin,
         load_entity_relationship_plugin,
         load_file_plugin,
         load_memory_link_plugin,
         load_write_plugin,
+    )
+    from app.services.code_artifact_write_plugin_service import (
+        CodeArtifactWritePluginService,
     )
     from app.services.entity_relationship_plugin_service import (
         EntityRelationshipPluginService,
@@ -250,6 +254,7 @@ async def build_runtime() -> Runtime:
     entity_plugin = load_entity_plugin(settings)
     relationship_registration = load_entity_relationship_plugin(settings)
     file_registration = load_file_plugin(settings)
+    code_artifact_registration = load_code_artifact_plugin(settings)
     plan_registration = load_plan_plugin(settings)
     plugin_logger_states = {}
     for registration, reference in (
@@ -257,6 +262,7 @@ async def build_runtime() -> Runtime:
         (link_registration, settings.MEMORY_LINK_PLUGIN),
         (entity_plugin, settings.ENTITY_WRITE_PLUGIN),
         (relationship_registration, settings.ENTITY_RELATIONSHIP_PLUGIN),
+        (code_artifact_registration, settings.CODE_ARTIFACT_WRITE_PLUGIN),
         (plan_registration, settings.PLAN_WRITE_PLUGIN),
     ):
         if registration is None:
@@ -291,6 +297,10 @@ async def build_runtime() -> Runtime:
         file_registration, mode=settings.FILE_WRITE_PLUGIN_MODE,
         timeout_seconds=settings.FILE_WRITE_PLUGIN_TIMEOUT_SECONDS,
     ) if file_registration is not None else None)
+    code_artifact_write_plugin = (CodeArtifactWritePluginService(
+        code_artifact_registration, mode=settings.CODE_ARTIFACT_WRITE_PLUGIN_MODE,
+        timeout_seconds=settings.CODE_ARTIFACT_WRITE_PLUGIN_TIMEOUT_SECONDS,
+    ) if code_artifact_registration is not None else None)
 
     plan_plugin = (PlanWritePluginService(
         plan_registration, mode=settings.PLAN_WRITE_PLUGIN_MODE,
@@ -318,6 +328,7 @@ async def build_runtime() -> Runtime:
         logging.getLogger("app.services.entity_relationship_plugin_service").disabled = False
         logging.getLogger("app.services.plan_write_plugin_service").disabled = False
         logging.getLogger("app.services.file_write_plugin_service").disabled = False
+        logging.getLogger("app.services.code_artifact_write_plugin_service").disabled = False
         logging.getLogger("app.services.memory_link_service").disabled = False
         # The UI mount warns when it is enabled without a bundle; that warning is
         # the only signal an operator gets, so keep it from being silenced here.
@@ -365,7 +376,10 @@ async def build_runtime() -> Runtime:
         if event_bus is not None:
             memory_service.register_access_tracking_handlers(event_bus)
         project_service = ProjectService(repos["project"], event_bus=event_bus)
-        code_artifact_service = CodeArtifactService(repos["code_artifact"], event_bus=event_bus)
+        code_artifact_service = CodeArtifactService(
+            repos["code_artifact"], event_bus=event_bus,
+            write_plugin=code_artifact_write_plugin,
+        )
         document_service = DocumentService(repos["document"], event_bus=event_bus)
         entity_service = EntityService(
             repos["entity"], event_bus=event_bus, write_plugin=entity_write_plugin,
